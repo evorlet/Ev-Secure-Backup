@@ -26,14 +26,17 @@
 	- [GUI] Modified "About"
 	- [List]Default folders are no longer de-selected when changing list, unchecked items are now saved
 	- [Script]Cleanup and added descriptions for future implementation and maintenance
-	//v1.3.7:
+	//v1.3.5:
 	- [GUI]Fixed label resizing problem in backup step 3
 	- [List]Fixed new files added not auto-checking, fixed bug where default folders were not processed, added option to open file location
 	- [Script]Global array for default folders => less constant elements
 	//v1.3.7:
 	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup.
+	//v1.3.9:
+	- [List]Browser data states are now saved
+	- [Other]List files are now encrypted
 	TODO: (high to low priority)
-	- Encrypt list files
+	- Possibly a way to selectively backup browser data instead of backing up everything (ignore cache and flashplayer data)
 	- Customizable multi-layered encryption method
 #ce
 
@@ -56,8 +59,8 @@
 #include "_Zip.au3"
 
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.3.7.0)
-#pragma compile(FileVersion, 1.3.7.0)
+#pragma compile(ProductVersion, 1.3.9.0)
+#pragma compile(FileVersion, 1.3.9.0)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
@@ -89,7 +92,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"],["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.3.7.0";//Current use: only in _AboutCM()
+Global $g_sProgramVersion = "1.3.9.0";//Current use: only in _AboutCM()
 Global $g_sScriptDir = @ScriptDir, $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0], $g_sProgramName = "Ev-Secure Backup"
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 
@@ -357,7 +360,7 @@ Func Restore5()
 EndFunc   ;==>Restore5
 
 Func ToBkUp2()
-	Local $aBkUpList[] = []
+	Local $aBkUpList[] = [], $sTemp
 	HideAllControls(False)
 	GUICtrlSetState($lvBkUp2_BackupList, $GUI_SHOW)
 	GUICtrlSetState($comboBkUp2_Profile, $GUI_SHOW)
@@ -366,9 +369,10 @@ Func ToBkUp2()
 		_GUICtrlListView_BeginUpdate($lvBkUp2_BackupList)
 		_AddDefaultFoldersToLV($lvBkUp2_BackupList)
 		$sTemp = FileRead($g_sScriptDir & "\ev_" & GUICtrlRead($comboBkUp2_Profile))
+		If $sTemp Then $sTemp = BinaryToString(_Crypt_DecryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256));//Decrypt list file
 		$aBkUpList = StringSplit($sTemp, "|", 2)
-		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
-		If UBound($aBkUpList) <= 1 Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list
+		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)	
+		;If Not $aBkUpList Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list	
 		_DefaultFoldersStates_Load()
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, 0, $aGUIPos[2] - 105)
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, $nSizeColumn, 70)
@@ -380,7 +384,7 @@ Func ToBkUp2()
 EndFunc   ;==>ToBkUp2
 
 Func ToBkUp3()
-	Local $a, $sTemp, $aAccelKeys, $sCurProfile = GUICtrlRead($comboBkUp2_Profile), $aAllItems[0]
+	Local $a, $sTemp, $aAccelKeys, $sCurProfile = GUICtrlRead($comboBkUp2_Profile), $aAllItems[0], $sRegExPattern
 	ReDim $g_aToBackupItems[0]
 	
 	If Not $sCurProfile Then
@@ -416,7 +420,13 @@ Func ToBkUp3()
 	For $i = 0 To UBound($aAllItems) - 1
 		$sTemp &= $aAllItems[$i] & "|"
 	Next
-	$sTemp = StringRegExpReplace($sTemp, "\x7C?(Documents|Pictures|Music|Videos)\x7C", "")
+	;//Remove default folders from list file
+	For $i = 0 To UBound($g_aDefaultFolders) - 1
+		$sRegExPattern &= $g_aDefaultFolders[$i][0] & "|"
+	Next
+	$sRegExPattern = StringTrimRight($sRegExPattern, 1); Remove last "|" delimiter so "|" symbols don't get erased during regex replace
+	$sTemp = StringRegExpReplace($sTemp, "\x7C?(" & $sRegExPattern & ")\x7C", "")
+	$sTemp = _Crypt_EncryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256);//Encrypt list file
 	
 	;//Save the name of current list for future program startup
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "LAST_LIST_USED", $sCurProfile)
@@ -716,7 +726,7 @@ Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False);//$bFromFilet:set ite
 				EndIf
 			EndIf
 			If FileGetAttrib($sCurFile) = "D" Then
-				$nIndex = _GUICtrlListView_AddItem($hWnd, $sCurFile, 5)
+				$nIndex = _GUICtrlListView_AddItem($hWnd, $sCurFile, 1)
 				_GUICtrlListView_AddSubItem($hWnd, $nIndex, Round(DirGetSize($sCurFile) / 1024 / 1024, 1) & "MB", $nSizeColumn)
 			Else
 				$sFile = StringReplace($sCurFile, "\\", "\")
@@ -762,6 +772,7 @@ Func _AddDefaultFoldersToLV($hWnd)
 	Next
 	_GUICtrlListView_SetImageList($hWnd, $hImage, 1)
 	_GUICtrlListView_EndUpdate($hWnd)
+	$g_nDefaultFoldersCount = UBound($g_aDefaultFolders)
 EndFunc   ;==>_AddDefaultFoldersToLV
 
 Func _AddShredderCM()
