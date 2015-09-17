@@ -2,7 +2,7 @@
 #AutoIt3Wrapper_Icon=F:\Icons\1442169766_MB__LOCK.ico
 #AutoIt3Wrapper_Outfile=F:\SBackup\Ev-SBackup.Exe
 #AutoIt3Wrapper_Res_Description=Securely backup your data
-#AutoIt3Wrapper_Res_Fileversion=1.3.5.0
+#AutoIt3Wrapper_Res_Fileversion=1.3.7.0
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
@@ -32,13 +32,14 @@
 	- [GUI] Modified "About"
 	- [List]Default folders are no longer de-selected when changing list, unchecked items are now saved
 	- [Script]Cleanup and added descriptions for future implementation and maintenance
-	//v1.3.5:
+	//v1.3.7:
 	- [GUI]Fixed label resizing problem in backup step 3
 	- [List]Fixed new files added not auto-checking, fixed bug where default folders were not processed, added option to open file location
 	- [Script]Global array for default folders => less constant elements
+	//v1.3.7:
+	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup.
 	TODO: (high to low priority)
 	- Encrypt list files
-	- Detect browser history/bookmarks
 	- Customizable multi-layered encryption method
 #ce
 
@@ -61,8 +62,8 @@
 #include "_Zip.au3"
 
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.3.5.0)
-#pragma compile(FileVersion, 1.3.5.0)
+#pragma compile(ProductVersion, 1.3.7.0)
+#pragma compile(FileVersion, 1.3.7.0)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
@@ -91,10 +92,10 @@ _GDIPlus_Startup()
 Global Const $STM_SETIMAGE = 0x0172
 
 ;//Global vars declaration
-;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview
-Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents"],["Pictures", @UserProfileDir & "\Pictures"], ["Music", @UserProfileDir & "\Music"], ["Videos", @UserProfileDir & "\Videos"]]
+;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
+Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"],["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.3.5.0";//Current use: only in _AboutCM()
+Global $g_sProgramVersion = "1.3.7.0";//Current use: only in _AboutCM()
 Global $g_sScriptDir = @ScriptDir, $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0], $g_sProgramName = "Ev-Secure Backup"
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 
@@ -189,11 +190,8 @@ GUICtrlSetOnEvent($cbBkUp3_ShowPwd, "BkUp3_ShowPassword")
 ;//Icons for BkUp2_ListView
 $hImage = _GUIImageList_Create(16, 16)
 _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\File.bmp")
-_GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Doc.bmp")
-_GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Pic.bmp")
-_GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Music.bmp")
-_GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Video.bmp")
 _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Folder.bmp")
+
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
 
 GUISetOnEvent($GUI_EVENT_CLOSE, "SpecialEvents")
@@ -611,7 +609,7 @@ EndFunc   ;==>BkUp2_AddFiles
 Func BkUp2_AddFolder()
 	$sFolderOpened = FileSelectFolder("Select a folder to backup", @DesktopDir)
 	If $sFolderOpened Then
-		$nIndex = _GUICtrlListView_AddItem($lvBkUp2_BackupList, $sFolderOpened, 5)
+		$nIndex = _GUICtrlListView_AddItem($lvBkUp2_BackupList, $sFolderOpened, 1)
 		_GUICtrlListView_AddSubItem($lvBkUp2_BackupList, $nIndex, Round(DirGetSize($sFolderOpened) / 1024 / 1024, 1) & "MB", $nSizeColumn)
 		_GUICtrlListView_SetItemChecked($lvBkUp2_BackupList, $nIndex, True)
 	EndIf
@@ -667,7 +665,7 @@ Func BkUp2_SelectList();Switch to a new list, load all items from respective lis
 	_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
 	$sTemp = FileRead($g_sScriptDir & "\" & "ev_" & GUICtrlRead($comboBkUp2_Profile))
 	$aBkUpList = StringSplit($sTemp, "|", 2)
-	_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList)
+	_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
 EndFunc   ;==>BkUp2_SelectList
 
 Func Restore2_Browse()
@@ -709,13 +707,13 @@ Func _DefaultFoldersStates_Load()
 	EndIf
 EndFunc   ;==>_DefaultFoldersStates_Load
 
-Func _AddFilesToLV($hWnd, $aFilesList, $bInit = False);//$bInit:set item's state chkd if used in BkUp2()
+Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False);//$bFromFilet:set item's state & remove "::chkd" string if used in BkUp2()
 	Local $sCurFile, $bCheckState = True
 	If Not IsArray($aFilesList) Then Return
 	For $i = 0 To UBound($aFilesList) - 1
 		$sCurFile = $aFilesList[$i]
 		If $sCurFile Then
-			If $bInit = True Then;If called upon listview creation
+			If $bFromFile = True Then;If called upon listview creation
 				If StringRegExp($sCurFile, "(::chkd)") Then ;;
 					$sCurFile = StringRegExpReplace($sCurFile, "(::chkd)", "")
 					$bCheckState = True
@@ -742,15 +740,34 @@ Func _AddDefaultFoldersToLV($hWnd)
 	#cs
 		Current default folders: MyDocuments,Pictures,Music,Videos
 		//TODO: Add bookmarks & history from mainstream browsers
-		Default Browser regkey: HKEY_CURRENT_USER\Software\Clients\StartMenuInternet
-		+ Chromium & Chrome have the same backup dir (User Data\Default)
+		Default Browser regkey: HKEY_CURRENT_USER\Software\Clients\StartMenuInternet, HKEY_CURRENT_USER\Software\Clients\Google\Chrome for GChrome
+		+ Chromium & Chrome have the same backup dir (%APPDATA%\Local\*Google\Chrome|Chromium*\User Data\Default)
 		+ Firefox: %APPDATA%\Mozilla\Firefox\Profiles\
 	#ce
-	Local $nFirstIndex, $nLastIndex
+	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then 
+		;//Back up Chrome data
+		_ArrayAdd($g_aDefaultFolders, "Chrome Data|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default|\_Res\Chrome.bmp")
+	EndIf
+	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then 
+		;//Back up Chromium data
+		_ArrayAdd($g_aDefaultFolders, "Chromium Data|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default|\_Res\Chromium.bmp")
+	EndIf
+	If FileExists(@UserProfileDir & "\AppData\Local\Mozilla\Firefox\Profiles") Then 
+		;//Back up Firefox data
+		_ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
+	EndIf
+	If FileExists(@UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable") Then 
+		;//Back up Opera data
+		_ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
+	EndIf
+	_GUICtrlListView_BeginUpdate($hWnd)
 	For $i = 0 To UBound($g_aDefaultFolders) - 1
-		_GUICtrlListView_AddItem($hWnd, $g_aDefaultFolders[$i][0], $i+1)
+		_GUIImageList_AddBitmap($hImage, $g_sScriptDir & $g_aDefaultFolders[$i][2])
+		_GUICtrlListView_AddItem($hWnd, $g_aDefaultFolders[$i][0], $i+2)
 		_GUICtrlListView_AddSubItem($hWnd, $i, Round(DirGetSize($g_aDefaultFolders[$i][1]) / 1024 / 1024, 1) & "MB", $nSizeColumn)
 	Next
+	_GUICtrlListView_SetImageList($hWnd, $hImage, 1)
+	_GUICtrlListView_EndUpdate($hWnd)
 EndFunc   ;==>_AddDefaultFoldersToLV
 
 Func _AddShredderCM()
