@@ -668,6 +668,7 @@ Func BkUp2_SelectList();Switch to a new list, load all items from respective lis
 	Next
 	_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
 	$sTemp = FileRead($g_sScriptDir & "\" & "ev_" & GUICtrlRead($comboBkUp2_Profile))
+	$sTemp = BinaryToString(_Crypt_DecryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256))
 	$aBkUpList = StringSplit($sTemp, "|", 2)
 	_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
 EndFunc   ;==>BkUp2_SelectList
