@@ -1,9 +1,3 @@
-#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
-#AutoIt3Wrapper_Icon=F:\Icons\1442169766_MB__LOCK.ico
-#AutoIt3Wrapper_Outfile=F:\SBackup\Ev-SBackup.Exe
-#AutoIt3Wrapper_Res_Description=Securely backup your data
-#AutoIt3Wrapper_Res_Fileversion=1.3.7.0
-#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
