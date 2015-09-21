@@ -32,7 +32,7 @@
 	- [Script]Global array for default folders => less constant elements
 	//v1.3.7:
 	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup
-	//v1.3.9
+	//v1.3.9:
 	- [List]Browser data states are now saved
 	- [Other]List files are now encrypted
 	//v1.4.4:
