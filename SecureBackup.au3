@@ -2,7 +2,7 @@
 #AutoIt3Wrapper_Icon=F:\Icons\1442169766_MB__LOCK.ico
 #AutoIt3Wrapper_Outfile=F:\SBackup\Ev-SBackup.Exe
 #AutoIt3Wrapper_Res_Description=Securely backup your data
-#AutoIt3Wrapper_Res_Fileversion=1.3.7.0
+#AutoIt3Wrapper_Res_Fileversion=1.4.4.0
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
@@ -32,15 +32,25 @@
 	- [GUI] Modified "About"
 	- [List]Default folders are no longer de-selected when changing list, unchecked items are now saved
 	- [Script]Cleanup and added descriptions for future implementation and maintenance
-	//v1.3.7:
+	//v1.3.5:
 	- [GUI]Fixed label resizing problem in backup step 3
 	- [List]Fixed new files added not auto-checking, fixed bug where default folders were not processed, added option to open file location
 	- [Script]Global array for default folders => less constant elements
 	//v1.3.7:
-	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup.
+	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup
+	//v1.4.4:
+	- [List]Browser data states are now saved
+	- [Other]List files are now encrypted
+	//v1.4.4:
+	- [GUI]Show password checkbox state is remembered, corrected git link in "About" section, redesigned the buttons
+	- [Other]Added option to purge jump lists and event logs in Windows, Icon for FileShredder, FileShredder can now handle UAC-locked files
+	- [Script]Replaced _FileInUse() with _FileWriteAccessible()
 	TODO: (high to low priority)
-	- Encrypt list files
-	- Customizable multi-layered encryption method
+	- Registry freezer
+	- Option to put the files back where they originally were
+	- Generate html file to assist after the restore process
+	- Possibly a way to selectively backup browser data instead of saving everything (ignore cache and flashplayer data)
+	- Customizable multi-layered encryption
 #ce
 
 #include <GuiconstantsEx.au3>
@@ -50,6 +60,7 @@
 #include <Array.au3>
 #include <GUIListView.au3>
 #include <GUIImageList.au3>
+#include <WinAPIex.au3>
 #include <GUICombobox.au3>
 #include <Crypt.au3>
 #include <EditConstants.au3>
@@ -59,11 +70,11 @@
 #include <String.au3>
 #include <GDIPlus.au3>
 #include <WindowsConstants.au3>
+#include <EventLog.au3>
 #include "_Zip.au3"
-
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.3.7.0)
-#pragma compile(FileVersion, 1.3.7.0)
+#pragma compile(ProductVersion, 1.4.4.0)
+#pragma compile(FileVersion, 1.4.4.0)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
@@ -73,7 +84,11 @@ If $CmdLine[0] >= 1 Then
 	If StringRegExp($CmdLine[1], "\\") Then
 		If StringRegExp($CmdLineRaw, "/shred") Then
 			If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
-				_FileShred($CmdLine[1])
+				If _FileWriteAccessible($CmdLine[1]) = 1 Then
+					_FileShred($CmdLine[1])
+				Else
+					ShellExecute(@AutoItExe, $CmdLine[1] & " /shred", "", "runas")
+				EndIf
 			Else
 				_PurgeDir($CmdLine[1])
 				DirRemove($CmdLine[1], 1)
@@ -95,7 +110,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"],["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.3.7.0";//Current use: only in _AboutCM()
+Global $g_sProgramVersion = "1.4.4.0";//Current use: only in _AboutCM()
 Global $g_sScriptDir = @ScriptDir, $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0], $g_sProgramName = "Ev-Secure Backup"
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 
@@ -110,7 +125,7 @@ $hGUI = GUICreate($g_sProgramName, 400, 500, -1, 100, BitOR(0x00020000, 0x000400
 $aGUIPos = WinGetPos($hGUI)
 
 ;//Create global GUI elements that will be re-used through the stages
-$cPic = GUICtrlCreatePic("", 50, 0, $aGUIPos[2], $aGUIPos[3] - 100);Loading Animation
+$cPic = GUICtrlCreatePic("", 50, 0, $aGUIPos[2], $aGUIPos[2]);Loading Animation
 GUICtrlSetResizing($cPic, 8 + 32 + 128 + 768)
 GUICtrlSetState($cPic, $GUI_HIDE)
 $btnNext = GUICtrlCreateButton("Next", 308, 435, 70, 30, $BS_BITMAP)
@@ -148,7 +163,7 @@ GUICtrlSetOnEvent($cmBkUp2_RemoveBackupItem, "BkUp2_RemoveSelected")
 GUICtrlSetOnEvent($cmBkUp2_SelectAll, "BkUp2_SelectAllCM")
 
 ;//Listview creation
-$sLastListUsed = IniRead("_Res\Settings.ini", "General", "LAST_LIST_USED", "MyNewList")
+$sLastListUsed = IniRead("_Res\Settings.ini", "General", "LAST_USED_LIST", "MyNewList")
 If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
 $comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 140, $aGUIPos[3] - 75, 120)
 GUICtrlSetTip($comboBkUp2_Profile, "Select your list, new list will be created if list does not exist.")
@@ -170,6 +185,7 @@ $lBkUp3_PwdConfirm = GUICtrlCreateLabel("Repeat your Password:", 40, 200, 200)
 $ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 220, $aGUIPos[2] - 100, 18, 0x0020)
 $cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 250, 200)
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
+GUICtrlSetState($cbBkUp3_ShowPwd, IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", $GUI_UNCHECKED))
 
 ;//Create stage-4 Backup GUI elements
 $cbBkUp4_ShowEncryptedFile = GUICtrlCreateCheckbox("Show result file", 160, $aGUIPos[3] - 77)
@@ -205,6 +221,8 @@ $hTrayPurgeDir = TrayCreateItem("YourData folder", $hTrayMenuPurge)
 TrayItemSetOnEvent(-1, "_PurgeDataDirCM")
 $hTrayPurgeLists = TrayCreateItem("All data lists", $hTrayMenuPurge)
 TrayItemSetOnEvent(-1, "_PurgeListsCM")
+$hTrayPurgeLists = TrayCreateItem("All Windows traces", $hTrayMenuPurge)
+TrayItemSetOnEvent(-1, "_PurgeRecentsCM")
 $hTrayAbout = TrayCreateItem("About")
 TrayItemSetOnEvent(-1, "_AboutCM")
 TrayCreateItem("")
@@ -363,7 +381,7 @@ Func Restore5()
 EndFunc   ;==>Restore5
 
 Func ToBkUp2()
-	Local $aBkUpList[] = []
+	Local $aBkUpList[] = [], $sTemp
 	HideAllControls(False)
 	GUICtrlSetState($lvBkUp2_BackupList, $GUI_SHOW)
 	GUICtrlSetState($comboBkUp2_Profile, $GUI_SHOW)
@@ -372,9 +390,10 @@ Func ToBkUp2()
 		_GUICtrlListView_BeginUpdate($lvBkUp2_BackupList)
 		_AddDefaultFoldersToLV($lvBkUp2_BackupList)
 		$sTemp = FileRead($g_sScriptDir & "\ev_" & GUICtrlRead($comboBkUp2_Profile))
+		If $sTemp Then $sTemp = BinaryToString(_Crypt_DecryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256));//Decrypt list file
 		$aBkUpList = StringSplit($sTemp, "|", 2)
-		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
-		If UBound($aBkUpList) <= 1 Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list
+		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)	
+		;If Not $aBkUpList Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list	
 		_DefaultFoldersStates_Load()
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, 0, $aGUIPos[2] - 105)
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, $nSizeColumn, 70)
@@ -386,7 +405,7 @@ Func ToBkUp2()
 EndFunc   ;==>ToBkUp2
 
 Func ToBkUp3()
-	Local $a, $sTemp, $aAccelKeys, $sCurProfile = GUICtrlRead($comboBkUp2_Profile), $aAllItems[0]
+	Local $a, $sTemp, $aAccelKeys, $sCurProfile = GUICtrlRead($comboBkUp2_Profile), $aAllItems[0], $sRegExPattern
 	ReDim $g_aToBackupItems[0]
 	
 	If Not $sCurProfile Then
@@ -411,7 +430,7 @@ Func ToBkUp3()
 		EndIf
 		_ArrayAdd($aAllItems, $sBackupItem)
 	Next
-	; $aAllItems: for all items|$g_aToBackupItems: for checked items only
+	; $aAllItems: all items - for list saving|$g_aToBackupItems: checked items only
 	
 	If UBound($g_aToBackupItems) = 0 Then; No item checked
 		MsgBox(64, $g_sProgramName, "No files were selected for backup.")
@@ -422,10 +441,16 @@ Func ToBkUp3()
 	For $i = 0 To UBound($aAllItems) - 1
 		$sTemp &= $aAllItems[$i] & "|"
 	Next
-	$sTemp = StringRegExpReplace($sTemp, "\x7C?(Documents|Pictures|Music|Videos)\x7C", "")
+	;//Remove default folders from list file
+	For $i = 0 To UBound($g_aDefaultFolders) - 1
+		$sRegExPattern &= $g_aDefaultFolders[$i][0] & "|"
+	Next
+	$sRegExPattern = StringTrimRight($sRegExPattern, 1); Remove last "|" delimiter so "|" symbols don't get erased during regex replace
+	$sTemp = StringRegExpReplace($sTemp, "\x7C?(" & $sRegExPattern & ")\x7C", "")
+	$sTemp = _Crypt_EncryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256);//Encrypt list file
 	
 	;//Save the name of current list for future program startup
-	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "LAST_LIST_USED", $sCurProfile)
+	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "LAST_USED_LIST", $sCurProfile)
 
 	;//Save everything from list to file
 	$hBkUpList = FileOpen($g_sScriptDir & "\ev_" & $sCurProfile, 2)
@@ -445,7 +470,6 @@ Func ToBkUp3()
 	EndIf
 	GUICtrlSetState($cbBkUp3_ShowPwd, $GUI_SHOW)
 	GUICtrlSetOnEvent($ipBkUp3_Pwd, "ToBkUp4")
-	GUICtrlSetOnEvent($ipBkUp3_PwdConfirm, "ToBkUp4")
 	
 	GUICtrlSetOnEvent($btnNext, "ToBkUp4")
 	GUICtrlSetOnEvent($btnBack, "ToBkUp2")
@@ -463,7 +487,7 @@ Func _ConvertDefaultFolderPath($sFolder)
 EndFunc	
 
 Func ToBkUp4()
-	;//Main step in backup, compress & stores files in an encrypted container
+	;//Main step in backup, compress & store files in an encrypted container
 	Local $sReport
 	$sPwd = GUICtrlRead($ipBkUp3_Pwd)
 	If Not $sPwd Then
@@ -474,15 +498,16 @@ Func ToBkUp4()
 		MsgBox(64, $g_sProgramName, "Passwords didn't match.")
 		Return
 	EndIf
+	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", GUICtrlRead($cbBkUp3_ShowPwd))
 	HideAllControls(True)
 	GUICtrlSetState($cPic, $GUI_SHOW)
 	GUIRegisterMsg($WM_TIMER, "PlayAnim")
 	GUICtrlSetState($btnNext, $GUI_SHOW)
 	$sPwdHashed = _DerivePwd($sPwd)
-	$aGUIPos = WinGetPos($hGUI)
 	$sReport &= "Compressing your data.." & @CRLF
-	$lBkUp4_Status = GUICtrlCreateLabel("Compressing your data..", ($aGUIPos[2] / 2) - 145, $aGUIPos[3] - 213, 280, 30, BitOR(0x0200, 0x01))
-	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", ($aGUIPos[2] / 2) - 150, $aGUIPos[3] - 182, 280, 30, BitOR(0x0200, 0x01))
+	$aCtrlPos = ControlGetPos($hGUI, "", $cPic)	
+	$lBkUp4_Status = GUICtrlCreateLabel("Compressing your data..", ($aCtrlPos[2] / 2) - 145, $aCtrlPos[3] - 110, 280, 24, BitOR(0x0200, 0x01))
+	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", ($aCtrlPos[2] / 2) - 150, $aCtrlPos[3] - 80, 280, 20, BitOR(0x0200, 0x01))
 	GUICtrlSetResizing($lBkUp4_Status, 8 + 32 + 128 + 768)
 	GUICtrlSetResizing($lBkUp4_CurrentFile, 8 + 32 + 128 + 768);Centered
 	GUICtrlSetFont($lBkUp4_Status, 11, 550, Default, "Segoe UI")
@@ -492,7 +517,7 @@ Func ToBkUp4()
 	AdlibRegister("HideCompressing", 20)
 	For $i = 0 To 20
 		Sleep(200)
-		If _FileInUse($sTempZip) <> 1 Then ExitLoop
+		If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 	Next
 	For $i = 0 To UBound($g_aToBackupItems, 1) - 1
 		If Mod($i, 8) = 0 Then Sleep(1500);Take a break every 8 items processed
@@ -527,7 +552,7 @@ Func ToBkUp4()
 		_FileShred($g_sScriptDir & "\EncryptedContainer")
 		For $i = 0 To 20
 			Sleep(200)
-			If _FileInUse($g_sScriptDir & "\EncryptedContainer") <> 1 Then ExitLoop
+			If _FileWriteAccessible($g_sScriptDir & "\EncryptedContainer") = 1 Then ExitLoop
 		Next
 	EndIf
 	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
@@ -664,6 +689,7 @@ Func BkUp2_SelectList();Switch to a new list, load all items from respective lis
 	Next
 	_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
 	$sTemp = FileRead($g_sScriptDir & "\" & "ev_" & GUICtrlRead($comboBkUp2_Profile))
+	$sTemp = BinaryToString(_Crypt_DecryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256))
 	$aBkUpList = StringSplit($sTemp, "|", 2)
 	_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
 EndFunc   ;==>BkUp2_SelectList
@@ -722,7 +748,7 @@ Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False);//$bFromFilet:set ite
 				EndIf
 			EndIf
 			If FileGetAttrib($sCurFile) = "D" Then
-				$nIndex = _GUICtrlListView_AddItem($hWnd, $sCurFile, 5)
+				$nIndex = _GUICtrlListView_AddItem($hWnd, $sCurFile, 1)
 				_GUICtrlListView_AddSubItem($hWnd, $nIndex, Round(DirGetSize($sCurFile) / 1024 / 1024, 1) & "MB", $nSizeColumn)
 			Else
 				$sFile = StringReplace($sCurFile, "\\", "\")
@@ -768,12 +794,15 @@ Func _AddDefaultFoldersToLV($hWnd)
 	Next
 	_GUICtrlListView_SetImageList($hWnd, $hImage, 1)
 	_GUICtrlListView_EndUpdate($hWnd)
+	$g_nDefaultFoldersCount = UBound($g_aDefaultFolders)
 EndFunc   ;==>_AddDefaultFoldersToLV
 
 Func _AddShredderCM()
 	If IsAdmin() Then
 		RegWrite("HKCR\*\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
+		RegWrite("HKCR\*\shell\Shred\", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")		
 		RegWrite("HKCR\Directory\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
+		RegWrite("HKCR\Directory\shell\Shred", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
 		MsgBox(64, $g_sProgramName, "Right-click [Shred] context menu added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
 	Else
 		MsgBox(16, $g_sProgramName, "Administrative privileges required.")
@@ -784,7 +813,7 @@ Func _AboutCM()
 	MsgBox(64, $g_sProgramName & " " & $g_sProgramVersion, "Ev-Secure Backup gathers your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
 			 & "Copyright(C) 2015 T.H. evorlet@wmail.io" & @CRLF _
 			 & "This software is open source and registered under GNU GPL license." & @CRLF _
-			 & "<https://github.com/evorlet/Ev-SecureBackup>")
+			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
 EndFunc   ;==>_AboutCM
 
 Func _PurgeListsCM()
@@ -792,17 +821,19 @@ Func _PurgeListsCM()
 	For $i = 1 To UBound($g_aProfiles) - 1
 		$sTemp &= $g_aProfiles[$i] & @CRLF
 	Next
-	If MsgBox(4, $g_sProgramName, "Are you sure you want to delete all these lists?" & @CRLF & $sTemp) = 6 Then;$MB_YES=6
+	If MsgBox(4, $g_sProgramName, "Are you sure you want to delete all saved data lists?" & @CRLF & $sTemp) = 6 Then;$MB_YES=6
 		For $i = 0 To UBound($g_aProfiles) - 1
 			_FileShred($g_sScriptDir & "\ev_" & $g_aProfiles[$i])
 		Next
 		GUICtrlSetData($comboBkUp2_Profile, "")
 	EndIf
+	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General","LAST_USED_LIST", "")
+	
 EndFunc   ;==>_PurgeListsCM
 
 Func _PurgeDataDirCM()
 	If FileExists($g_sScriptDir & "\YourData") Then
-		If MsgBox(4, $g_sProgramName, "Are you sure you want to shred your recovery folder?") = 6 Then; $MB_YES=6
+		If MsgBox(4, $g_sProgramName, "Are you sure you want to shred your recovery folder?" & @CRLF & "Size: " &  Round(DirGetSize($g_sScriptDir & "\YourData") / 1024 / 1024, 2) & " Mb") = 6 Then; $MB_YES=6
 			TrayTip($g_sProgramName, "Purging..", 5, 1)
 			_PurgeDir($g_sScriptDir & "\YourData")
 			DirRemove($g_sScriptDir & "\YourData", 1);Remove everything
@@ -812,6 +843,28 @@ Func _PurgeDataDirCM()
 		MsgBox(0, $g_sProgramName, $g_sScriptDir & "\YourData folder does not exist.")
 	EndIf
 EndFunc   ;==>_PurgeDataDirCM
+
+Func _PurgeRecentsCM()
+	If MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/jump lists in Windows." & @CRLF & "Proceed?") = 6 Then
+		_PurgeDir(@AppDataDir & "\Microsoft\Windows\Recent")
+		If MsgBox(4, $g_sProgramName, "Clear event logs?") = 6 Then
+			If IsAdmin() Then
+				$hEventLog = _EventLog__Open("", "Application")
+				_EventLog__Clear($hEventLog, "")
+				_EventLog__Close($hEventLog)
+				$hEventLog = _EventLog__Open("", "System")
+				_EventLog__Clear($hEventLog, "")
+				_EventLog__Close($hEventLog)
+				$hEventLog = _EventLog__Open("", "Security")
+				_EventLog__Clear($hEventLog, "")
+				_EventLog__Close($hEventLog)
+				RegWrite("HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", "REG_DWORD", 1) 
+			Else
+				MsgBox(64, $g_sProgramName, "Unable to clear event logs. Administrative privileges required.")
+			EndIf	
+		EndIf
+	EndIf
+EndFunc	
 
 #Region Everything FileShredder
 
@@ -831,25 +884,24 @@ Func _PurgeDir($sDataDir);Shred all files in a folder - Recursive
 EndFunc   ;==>_PurgeDir
 
 Func _FileShred($sFilePath)
-	Local $aFilePath, $iSiz
-	$sChr = ""
+	Local $aFilePath, $iSiz, $sChr = ""
+	Local Static $sChrN = Chr(48)
 	If StringRegExp(FileGetAttrib($sFilePath), "(R)") Then FileSetAttrib($sFilePath, "-R"); RegEx is faster than StringInStr()
 	$aFilePath = StringRegExp($sFilePath, "^(.*\\)(.*)$", 3)
 	If Not IsArray($aFilePath) Then Return
 	FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
-	$sFilePath = $aFilePath[0] & "0000000000000000000000000000000"
-	FileRename($sFilePath, $aFilePath[0] & "0000")
-	$sFilePath = $aFilePath[0] & "0000"
+	FileRename($aFilePath[0] & "0000000000000000000000000000000", $aFilePath[0] & "0000000000000")
+	FileRename($aFilePath[0] & "0000000000000", $aFilePath[0] & "00000")
+	$sFilePath = $aFilePath[0] & "00000"
 	$hFileToShred = FileOpen($sFilePath, 18)
 	If @error Then Return @error
-	For $x = 0 To 1024
-		$sChr &= Chr(48)
-	Next
+	$sChr = _StringRepeat($sChrN, 1024)
 	If FileGetSize($sFilePath) <= 1024 Then
 		$iSiz = 1
 	Else
 		$iSiz = Round(FileGetSize($sFilePath) / 1024)
 	EndIf
+	$iSiz = Int($iSiz)
 	For $a = 0 To 2
 		For $i = 1 To $iSiz
 			FileWrite($hFileToShred, $sChr)
@@ -892,37 +944,6 @@ Func _StringToStruct($string)
 	Return $tStruct
 EndFunc   ;==>_StringToStruct
 #EndRegion Everything FileShredder
-
-Func _FileInUse($sFilename, $iAccess = 0)
-	Local $aRet, $hFile, $iError, $iDA
-	Local Const $GENERIC_WRITE = 0x40000000
-	Local Const $GENERIC_READ = 0x80000000
-	Local Const $FILE_ATTRIBUTE_NORMAL = 0x80
-	Local Const $OPEN_EXISTING = 3
-	$iDA = $GENERIC_READ
-	If BitAND($iAccess, 1) <> 0 Then $iDA = BitOR($GENERIC_READ, $GENERIC_WRITE)
-	$aRet = DllCall("Kernel32.dll", "hwnd", "CreateFile", _
-			"str", $sFilename, _;lpFileName
-			"dword", $iDA, _;dwDesiredAccess
-			"dword", 0x00000000, _;dwShareMode = DO NOT SHARE
-			"dword", 0x00000000, _;lpSecurityAttributes = NULL
-			"dword", $OPEN_EXISTING, _;dwCreationDisposition = OPEN_EXISTING
-			"dword", $FILE_ATTRIBUTE_NORMAL, _;dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL
-			"hwnd", 0);hTemplateFile = NULL
-	$iError = @error
-	If @error Or IsArray($aRet) = 0 Then Return SetError($iError, 0, -1)
-	$hFile = $aRet[0]
-	If $hFile = -1 Then;INVALID_HANDLE_VALUE = -1
-		$aRet = DllCall("Kernel32.dll", "int", "GetLastError")
-		;ERROR_SHARING_VIOLATION = 32 0x20
-		;The process cannot access the file because it is being used by another process.
-		If @error Or IsArray($aRet) = 0 Then Return SetError($iError, 0, 1)
-		Return SetError($aRet[0], 0, 1)
-	Else
-		DllCall("Kernel32.dll", "int", "CloseHandle", "hwnd", $hFile)
-		Return SetError(@error, 0, 0)
-	EndIf
-EndFunc   ;==>_FileInUse
 
 Func _PathStringSplit($sPath)
 	$aPath = StringRegExp($sPath, "^(.*\\)(.*)$", 3)
@@ -994,3 +1015,33 @@ Func _GDIPlus_SpinningAndGlowing($fProgress, $iW, $iH, $iColor = 0x00A2E8, $fSiz
 	_GDIPlus_BitmapDispose($hBmp)
 	Return $hHBITMAP
 EndFunc   ;==>_GDIPlus_SpinningAndGlowing
+Func _FileWriteAccessible($sFile)
+    ; Returns
+    ;            1 = Success, file is writeable and deletable
+    ;            0 = Failure
+    ; @error
+    ;            1 = Access Denied because of lacking access rights
+    ;             2 = File is set "Read Only" by attribute
+    ;            3 = File not found
+    ;            4 = Unknown Api Error, check @extended
+    Local $iSuccess = 0, $iError_Extended = 0, $iError = 0, $hFile
+    ;$hFile = _WinAPI_CreateFileEx($sFile, $OPEN_EXISTING, $FILE_WRITE_DATA, BitOR($FILE_SHARE_DELETE, $FILE_SHARE_READ, $FILE_SHARE_WRITE), $FILE_FLAG_BACKUP_SEMANTICS)
+    $hFile = _WinAPI_CreateFileEx($sFile, 3, 2, 7, 0x02000000)
+    Switch _WinAPI_GetLastError()
+        Case 0 ; ERROR_SUCCESS
+            $iSuccess = 1
+        Case 5 ; ERROR_ACCESS_DENIED
+            If StringInStr(FileGetAttrib($sFile), "R", 2) Then
+                $iError = 2
+            Else
+                $iError = 1
+            EndIf
+        Case 2 ; ERROR_FILE_NOT_FOUND
+            $iError = 3
+        Case Else
+            $iError = 4
+            $iError_Extended = _WinAPI_GetLastError()
+    EndSwitch
+    _WinAPI_CloseHandle($hFile)
+    Return SetError($iError, $iError_Extended, $iSuccess)
+EndFunc   ;==>_FileWriteAccessible
