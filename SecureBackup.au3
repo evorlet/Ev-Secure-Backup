@@ -32,7 +32,7 @@
 	- [Script]Global array for default folders => less constant elements
 	//v1.3.7:
 	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup
-	//v1.4.4:
+	//v1.3.9:
 	- [List]Browser data states are now saved
 	- [Other]List files are now encrypted
 	//v1.4.4:
@@ -73,23 +73,28 @@
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
 
+Global $g_sProgramName = "Ev-Secure Backup", $g_sScriptDir = @ScriptDir
+If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
+
 ;//[Shred] cmd if called with parameter
 If $CmdLine[0] >= 1 Then
-	If StringRegExp($CmdLine[1], "\\") Then
-		If StringRegExp($CmdLineRaw, "/shred") Then
+	If StringRegExp($CmdLineRaw, "/shred") Then
+		If StringRegExp($CmdLine[1], "\\") Then
 			If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
 				If _FileWriteAccessible($CmdLine[1]) = 1 Then
 					_FileShred($CmdLine[1])
 				Else
-					ShellExecute(@AutoItExe, $CmdLine[1] & " /shred", "", "runas")
+					If Not IsAdmin() Then ShellExecute(@AutoItExe, $CmdLine[1] & " /shred", "", "runas")
 				EndIf
 			Else
 				_PurgeDir($CmdLine[1])
 				DirRemove($CmdLine[1], 1)
 			EndIf
-			Exit
 		EndIf
+	ElseIf $CmdLineRaw = "/add" Then
+		_AddShredderCM()
 	EndIf
+	Exit
 EndIf
 
 Opt("GUIOnEventMode", 1)
@@ -101,12 +106,12 @@ _GDIPlus_Startup()
 Global Const $STM_SETIMAGE = 0x0172
 
 ;//Global vars declaration
+
 ;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
-Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"],["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
+Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
 Global $g_sProgramVersion = "1.4.4.0";//Current use: only in _AboutCM()
-Global $g_sScriptDir = @ScriptDir, $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0], $g_sProgramName = "Ev-Secure Backup"
-If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
+Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0]
 
 ;//GUI elements declaration
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
@@ -386,8 +391,8 @@ Func ToBkUp2()
 		$sTemp = FileRead($g_sScriptDir & "\ev_" & GUICtrlRead($comboBkUp2_Profile))
 		If $sTemp Then $sTemp = BinaryToString(_Crypt_DecryptData($sTemp, "!y^86s*z;s_-21", $CALG_AES_256));//Decrypt list file
 		$aBkUpList = StringSplit($sTemp, "|", 2)
-		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)	
-		;If Not $aBkUpList Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list	
+		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
+		;If Not $aBkUpList Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list
 		_DefaultFoldersStates_Load()
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, 0, $aGUIPos[2] - 105)
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, $nSizeColumn, 70)
@@ -410,10 +415,10 @@ Func ToBkUp3()
 	
 	;//Add new item to profile combo box if list doesn't exist
 	_ArraySearch($g_aProfiles, $sCurProfile)
-	If @error Then 
+	If @error Then
 		GUICtrlSetData($comboBkUp2_Profile, $sCurProfile)
-		_ArrayAdd($g_aProfiles, $sCurProFile)
-	EndIf	
+		_ArrayAdd($g_aProfiles, $sCurProfile)
+	EndIf
 	
 	;//Get ready to save to list file
 	For $i = 0 To _GUICtrlListView_GetItemCount($lvBkUp2_BackupList) - 1
@@ -473,12 +478,12 @@ Func _ConvertDefaultFolderPath($sFolder)
 	;//Replace default folders like "Documents" with actual dir path stored in [$i][1]
 	For $i = 0 To $g_nDefaultFoldersCount - 1
 		If $sFolder = $g_aDefaultFolders[$i][0] Then
-			$sFolder = $g_aDefaultFolders[$i][1] 
+			$sFolder = $g_aDefaultFolders[$i][1]
 			ExitLoop
 		EndIf
 	Next
 	Return $sFolder
-EndFunc	
+EndFunc   ;==>_ConvertDefaultFolderPath
 
 Func ToBkUp4()
 	;//Main step in backup, compress & store files in an encrypted container
@@ -499,7 +504,7 @@ Func ToBkUp4()
 	GUICtrlSetState($btnNext, $GUI_SHOW)
 	$sPwdHashed = _DerivePwd($sPwd)
 	$sReport &= "Compressing your data.." & @CRLF
-	$aCtrlPos = ControlGetPos($hGUI, "", $cPic)	
+	$aCtrlPos = ControlGetPos($hGUI, "", $cPic)
 	$lBkUp4_Status = GUICtrlCreateLabel("Compressing your data..", ($aCtrlPos[2] / 2) - 145, $aCtrlPos[3] - 110, 280, 24, BitOR(0x0200, 0x01))
 	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", ($aCtrlPos[2] / 2) - 150, $aCtrlPos[3] - 80, 280, 20, BitOR(0x0200, 0x01))
 	GUICtrlSetResizing($lBkUp4_Status, 8 + 32 + 128 + 768)
@@ -518,7 +523,7 @@ Func ToBkUp4()
 		$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
 		GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
 		_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096)
-		If @error Then	
+		If @error Then
 			If @error = 9 Then
 				$sReport &= $sFileToCompress & " filename duplicate, renaming.." & @CRLF
 				$sTemp = "_" & Random(1, 9, 1)
@@ -604,9 +609,9 @@ Func BkUp2_OpenFileLocation()
 	For $i = 0 To _GUICtrlListView_GetItemCount($lvBkUp2_BackupList) - 1
 		If _GUICtrlListView_GetItemSelected($lvBkUp2_BackupList, $i) = True Then
 			_WinAPI_ShellOpenFolderAndSelectItems(_ConvertDefaultFolderPath(_GUICtrlListView_GetItemText($lvBkUp2_BackupList, $i)))
-		EndIf	
+		EndIf
 	Next
-EndFunc	
+EndFunc   ;==>BkUp2_OpenFileLocation
 
 Func BkUp2_AddFiles()
 	Local $aFilesOpenedFinal[] = [0, 0]
@@ -764,26 +769,26 @@ Func _AddDefaultFoldersToLV($hWnd)
 		+ Chromium & Chrome have the same backup dir (%APPDATA%\Local\*Google\Chrome|Chromium*\User Data\Default)
 		+ Firefox: %APPDATA%\Mozilla\Firefox\Profiles\
 	#ce
-	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then 
+	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then
 		;//Back up Chrome data
 		_ArrayAdd($g_aDefaultFolders, "Chrome Data|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default|\_Res\Chrome.bmp")
 	EndIf
-	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then 
+	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then
 		;//Back up Chromium data
 		_ArrayAdd($g_aDefaultFolders, "Chromium Data|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default|\_Res\Chromium.bmp")
 	EndIf
-	If FileExists(@UserProfileDir & "\AppData\Local\Mozilla\Firefox\Profiles") Then 
+	If FileExists(@UserProfileDir & "\AppData\Local\Mozilla\Firefox\Profiles") Then
 		;//Back up Firefox data
 		_ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
 	EndIf
-	If FileExists(@UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable") Then 
+	If FileExists(@UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable") Then
 		;//Back up Opera data
 		_ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
 	EndIf
 	_GUICtrlListView_BeginUpdate($hWnd)
 	For $i = 0 To UBound($g_aDefaultFolders) - 1
 		_GUIImageList_AddBitmap($hImage, $g_sScriptDir & $g_aDefaultFolders[$i][2])
-		_GUICtrlListView_AddItem($hWnd, $g_aDefaultFolders[$i][0], $i+2)
+		_GUICtrlListView_AddItem($hWnd, $g_aDefaultFolders[$i][0], $i + 2)
 		_GUICtrlListView_AddSubItem($hWnd, $i, Round(DirGetSize($g_aDefaultFolders[$i][1]) / 1024 / 1024, 1) & "MB", $nSizeColumn)
 	Next
 	_GUICtrlListView_SetImageList($hWnd, $hImage, 1)
@@ -794,12 +799,13 @@ EndFunc   ;==>_AddDefaultFoldersToLV
 Func _AddShredderCM()
 	If IsAdmin() Then
 		RegWrite("HKCR\*\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
-		RegWrite("HKCR\*\shell\Shred\", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")		
+		RegWrite("HKCR\*\shell\Shred\", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
 		RegWrite("HKCR\Directory\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
 		RegWrite("HKCR\Directory\shell\Shred", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
 		MsgBox(64, $g_sProgramName, "Right-click [Shred] context menu added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
 	Else
-		MsgBox(16, $g_sProgramName, "Administrative privileges required.")
+		ShellExecute(@AutoItExe, "/add", "", "runas")
+		;MsgBox(16, $g_sProgramName, "Administrative privileges required.")
 	EndIf
 EndFunc   ;==>_AddShredderCM
 
@@ -821,13 +827,13 @@ Func _PurgeListsCM()
 		Next
 		GUICtrlSetData($comboBkUp2_Profile, "")
 	EndIf
-	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General","LAST_USED_LIST", "")
+	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "LAST_USED_LIST", "")
 	
 EndFunc   ;==>_PurgeListsCM
 
 Func _PurgeDataDirCM()
 	If FileExists($g_sScriptDir & "\YourData") Then
-		If MsgBox(4, $g_sProgramName, "Are you sure you want to shred your recovery folder?" & @CRLF & "Size: " &  Round(DirGetSize($g_sScriptDir & "\YourData") / 1024 / 1024, 2) & " Mb") = 6 Then; $MB_YES=6
+		If MsgBox(4, $g_sProgramName, "Are you sure you want to shred your recovery folder?" & @CRLF & "Size: " & Round(DirGetSize($g_sScriptDir & "\YourData") / 1024 / 1024, 2) & " Mb") = 6 Then; $MB_YES=6
 			TrayTip($g_sProgramName, "Purging..", 5, 1)
 			_PurgeDir($g_sScriptDir & "\YourData")
 			DirRemove($g_sScriptDir & "\YourData", 1);Remove everything
@@ -852,13 +858,13 @@ Func _PurgeRecentsCM()
 				$hEventLog = _EventLog__Open("", "Security")
 				_EventLog__Clear($hEventLog, "")
 				_EventLog__Close($hEventLog)
-				RegWrite("HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", "REG_DWORD", 1) 
+				RegWrite("HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", "REG_DWORD", 1)
 			Else
 				MsgBox(64, $g_sProgramName, "Unable to clear event logs. Administrative privileges required.")
-			EndIf	
+			EndIf
 		EndIf
 	EndIf
-EndFunc	
+EndFunc   ;==>_PurgeRecentsCM
 
 #Region Everything FileShredder
 
@@ -1010,32 +1016,32 @@ Func _GDIPlus_SpinningAndGlowing($fProgress, $iW, $iH, $iColor = 0x00A2E8, $fSiz
 	Return $hHBITMAP
 EndFunc   ;==>_GDIPlus_SpinningAndGlowing
 Func _FileWriteAccessible($sFile)
-    ; Returns
-    ;            1 = Success, file is writeable and deletable
-    ;            0 = Failure
-    ; @error
-    ;            1 = Access Denied because of lacking access rights
-    ;             2 = File is set "Read Only" by attribute
-    ;            3 = File not found
-    ;            4 = Unknown Api Error, check @extended
-    Local $iSuccess = 0, $iError_Extended = 0, $iError = 0, $hFile
-    ;$hFile = _WinAPI_CreateFileEx($sFile, $OPEN_EXISTING, $FILE_WRITE_DATA, BitOR($FILE_SHARE_DELETE, $FILE_SHARE_READ, $FILE_SHARE_WRITE), $FILE_FLAG_BACKUP_SEMANTICS)
-    $hFile = _WinAPI_CreateFileEx($sFile, 3, 2, 7, 0x02000000)
-    Switch _WinAPI_GetLastError()
-        Case 0 ; ERROR_SUCCESS
-            $iSuccess = 1
-        Case 5 ; ERROR_ACCESS_DENIED
-            If StringInStr(FileGetAttrib($sFile), "R", 2) Then
-                $iError = 2
-            Else
-                $iError = 1
-            EndIf
-        Case 2 ; ERROR_FILE_NOT_FOUND
-            $iError = 3
-        Case Else
-            $iError = 4
-            $iError_Extended = _WinAPI_GetLastError()
-    EndSwitch
-    _WinAPI_CloseHandle($hFile)
-    Return SetError($iError, $iError_Extended, $iSuccess)
+	; Returns
+	;            1 = Success, file is writeable and deletable
+	;            0 = Failure
+	; @error
+	;            1 = Access Denied because of lacking access rights
+	;             2 = File is set "Read Only" by attribute
+	;            3 = File not found
+	;            4 = Unknown Api Error, check @extended
+	Local $iSuccess = 0, $iError_Extended = 0, $iError = 0, $hFile
+	;$hFile = _WinAPI_CreateFileEx($sFile, $OPEN_EXISTING, $FILE_WRITE_DATA, BitOR($FILE_SHARE_DELETE, $FILE_SHARE_READ, $FILE_SHARE_WRITE), $FILE_FLAG_BACKUP_SEMANTICS)
+	$hFile = _WinAPI_CreateFileEx($sFile, 3, 2, 7, 0x02000000)
+	Switch _WinAPI_GetLastError()
+		Case 0 ; ERROR_SUCCESS
+			$iSuccess = 1
+		Case 5 ; ERROR_ACCESS_DENIED
+			If StringInStr(FileGetAttrib($sFile), "R", 2) Then
+				$iError = 2
+			Else
+				$iError = 1
+			EndIf
+		Case 2 ; ERROR_FILE_NOT_FOUND
+			$iError = 3
+		Case Else
+			$iError = 4
+			$iError_Extended = _WinAPI_GetLastError()
+	EndSwitch
+	_WinAPI_CloseHandle($hFile)
+	Return SetError($iError, $iError_Extended, $iSuccess)
 EndFunc   ;==>_FileWriteAccessible
