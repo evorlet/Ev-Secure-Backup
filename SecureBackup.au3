@@ -1,9 +1,3 @@
-#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
-#AutoIt3Wrapper_Icon=F:\Icons\1442169766_MB__LOCK.ico
-#AutoIt3Wrapper_Outfile=F:\SBackup\Ev-SBackup.Exe
-#AutoIt3Wrapper_Res_Description=Securely backup your data
-#AutoIt3Wrapper_Res_Fileversion=1.4.8.0
-#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
@@ -121,7 +115,11 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
+<<<<<<< HEAD
 Global $g_sProgramVersion = "1.4.8.0";//Current use: only in _AboutCM()
+=======
+Global $g_sProgramVersion = "1.4.4.0";//Current use: only in _AboutCM()
+>>>>>>> origin/master
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0]
 
 ;//GUI elements declaration
@@ -533,6 +531,7 @@ Func ToBkUp4()
 	GUIRegisterMsg($WM_TIMER, "PlayAnim")
 	GUICtrlSetState($btnNext, $GUI_SHOW)
 	$sPwdHashed = _DerivePwd($sPwd)
+<<<<<<< HEAD
 	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
 	$lBkUp4_Status = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 120, $aCtrlPos[0], 24, BitOR(0x0200, 0x01))
@@ -572,6 +571,40 @@ Func ToBkUp4()
 				Else
 					$sReport &= $sFileToCompress & " compression failed. Error: " & @error & @CRLF
 				EndIf
+=======
+	$sReport &= "Compressing your data.." & @CRLF
+	$aCtrlPos = ControlGetPos($hGUI, "", $cPic)
+	$lBkUp4_Status = GUICtrlCreateLabel("Compressing your data..", ($aCtrlPos[2] / 2) - 145, $aCtrlPos[3] - 110, 280, 24, BitOR(0x0200, 0x01))
+	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", ($aCtrlPos[2] / 2) - 150, $aCtrlPos[3] - 80, 280, 20, BitOR(0x0200, 0x01))
+	GUICtrlSetResizing($lBkUp4_Status, 8 + 32 + 128 + 768)
+	GUICtrlSetResizing($lBkUp4_CurrentFile, 8 + 32 + 128 + 768);Centered
+	GUICtrlSetFont($lBkUp4_Status, 11, 550, Default, "Segoe UI")
+	GUICtrlSetState($btnNext, $GUI_DISABLE)
+	$sTempZip = $g_sScriptDir & "\_temp.zip"
+	_Zip_Create($sTempZip, 1)
+	AdlibRegister("HideCompressing", 20)
+	For $i = 0 To 20
+		Sleep(200)
+		If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
+	Next
+	For $i = 0 To UBound($g_aToBackupItems, 1) - 1
+		If Mod($i, 8) = 0 Then Sleep(1500);Take a break every 8 items processed
+		$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
+		GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
+		_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096)
+		If @error Then
+			If @error = 9 Then
+				$sReport &= $sFileToCompress & " filename duplicate, renaming.." & @CRLF
+				$sTemp = "_" & Random(1, 9, 1)
+				$sNewFileName = StringRegExpReplace($sFileToCompress, "^(.*\\)(.*)(\.\w+)", "$1$2" & $sTemp & "$3")
+				FileRename($sFileToCompress, $sNewFileName)
+				For $a = 0 To 10
+					Sleep(50)
+					If FileExists($sNewFileName) Then ExitLoop
+				Next
+				_Zip_AddItem($sTempZip, $sNewFileName, "", 4 + 8 + 16 + 1024)
+				FileRename($sNewFileName, $sFileToCompress)
+>>>>>>> origin/master
 			Else
 				$sReport &= $sFileToCompress & " successfully compressed." & @CRLF
 			EndIf
@@ -908,6 +941,7 @@ Func _PurgeRecentsCM()
 	Local $sLogPurged
 	If MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/pinned items/jump lists in Windows." & @CRLF & @CRLF & "Proceed?") = 6 Then
 		_PurgeDir(@AppDataDir & "\Microsoft\Windows\Recent")
+<<<<<<< HEAD
 		_PurgeRegCM()
 	EndIf
 	If MsgBox(4, $g_sProgramName, "Clear event logs (requires Admin)?") = 6 Then
@@ -927,6 +961,25 @@ Func _PurgeRecentsCM()
 		EndIf
 	EndIf
 	MsgBox(64, $g_sProgramName, "Everything has been securely erased" & $sLogPurged & ". Please note that you might have still left traces within your registry.")
+=======
+		If MsgBox(4, $g_sProgramName, "Clear event logs?") = 6 Then
+			If IsAdmin() Then
+				$hEventLog = _EventLog__Open("", "Application")
+				_EventLog__Clear($hEventLog, "")
+				_EventLog__Close($hEventLog)
+				$hEventLog = _EventLog__Open("", "System")
+				_EventLog__Clear($hEventLog, "")
+				_EventLog__Close($hEventLog)
+				$hEventLog = _EventLog__Open("", "Security")
+				_EventLog__Clear($hEventLog, "")
+				_EventLog__Close($hEventLog)
+				RegWrite("HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", "REG_DWORD", 1)
+			Else
+				MsgBox(64, $g_sProgramName, "Unable to clear event logs. Administrative privileges required.")
+			EndIf
+		EndIf
+	EndIf
+>>>>>>> origin/master
 EndFunc   ;==>_PurgeRecentsCM
 
 #Region Everything FileShredder
