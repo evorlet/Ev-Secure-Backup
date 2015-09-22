@@ -1,3 +1,9 @@
+#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
+#AutoIt3Wrapper_Icon=F:\Icons\1442169766_MB__LOCK.ico
+#AutoIt3Wrapper_Outfile=F:\SBackup\Ev-SBackup.Exe
+#AutoIt3Wrapper_Res_Description=Securely backup your data
+#AutoIt3Wrapper_Res_Fileversion=1.4.8.0
+#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
@@ -36,17 +42,20 @@
 	- [List]Browser data states are now saved
 	- [Other]List files are now encrypted
 	//v1.4.4:
-	- [GUI]Show password checkbox state is remembered, corrected git link in "About" section, redesigned the buttons
+	- [GUI]Show password checkbox state is remembered, corrected git link in "About" section, redesigned buttons
 	- [Other]Added option to purge jump lists and event logs in Windows, Icon for FileShredder, FileShredder can now handle UAC-locked files
 	- [Script]Replaced _FileInUse() with _FileWriteAccessible()
+	//v1.4.8:
+	- [Encryption]Shortened derived password for better performance, added compression-free encryption.
+	- [GUI]Corrected report area positioning, fixed various GUI bugs
+	- [Other]Some part of registry can be purged to remove activity traces
 	TODO: (high to low priority)
+	- Option to ignore compression and encrypt files only
 	- Registry freezer
 	- Option to put the files back where they originally were
 	- Generate html file to assist after the restore process
 	- Possibly a way to selectively backup browser data instead of saving everything (ignore cache and flashplayer data)
-	- Customizable multi-layered encryption
 #ce
-
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
 #include <ButtonConstants.au3>
@@ -64,11 +73,12 @@
 #include <String.au3>
 #include <GDIPlus.au3>
 #include <WindowsConstants.au3>
+#include <WinAPIEx.au3>
 #include <EventLog.au3>
 #include "_Zip.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.4.4.0)
-#pragma compile(FileVersion, 1.4.4.0)
+#pragma compile(ProductVersion, 1.4.8.0)
+#pragma compile(FileVersion, 1.4.8.0)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
@@ -103,6 +113,7 @@ Opt("TrayMenuMode", 3)
 Opt('TrayOnEventMode', 1)
 
 _GDIPlus_Startup()
+_Crypt_Startup()
 Global Const $STM_SETIMAGE = 0x0172
 
 ;//Global vars declaration
@@ -110,7 +121,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.4.4.0";//Current use: only in _AboutCM()
+Global $g_sProgramVersion = "1.4.8.0";//Current use: only in _AboutCM()
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0]
 
 ;//GUI elements declaration
@@ -178,20 +189,24 @@ GUICtrlSetResizing($comboBkUp2_Profile, 768 + 64 + 8);HCentered
 GUICtrlSetOnEvent($comboBkUp2_Profile, "BkUp2_SelectList")
 
 ;//Create stage-3 Backup GUI elements
-$lBkUp3_Pwd = GUICtrlCreateLabel("Pick your Password:", 40, 150, 200)
-$ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 170, $aGUIPos[2] - 100, 18, 0x0020)
-$lBkUp3_PwdConfirm = GUICtrlCreateLabel("Repeat your Password:", 40, 200, 200)
-$ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 220, $aGUIPos[2] - 100, 18, 0x0020)
-$cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 250, 200)
+$lBkUp3_Pwd = GUICtrlCreateLabel("Pick your Password:", 40, 130, 200)
+$bShowPwd = IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", $GUI_UNCHECKED)
+$ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 150, $aGUIPos[2] - 100, 18)
+If $bShowPwd = $GUI_UNCHECKED Then GUICtrlSetStyle($ipBkUp3_Pwd, 0x0020)
+$lBkUp3_PwdConfirm = GUICtrlCreateLabel("Repeat your Password:", 40, 180, 200)
+$ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 100, 18, 0x0020)
+$cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 230, 130)
+$hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 47)
+$cbBkUp3_Compress = GUICtrlCreateCheckbox("Compress data", 45, 298, 130)
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
-GUICtrlSetState($cbBkUp3_ShowPwd, IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", $GUI_UNCHECKED))
+GUICtrlSetState($cbBkUp3_ShowPwd, $bShowPwd)
 
 ;//Create stage-4 Backup GUI elements
 $cbBkUp4_ShowEncryptedFile = GUICtrlCreateCheckbox("Show result file", 160, $aGUIPos[3] - 77)
 GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_CHECKED)
 
 ;//Create stage-2 Restore GUI elements(first in Restore)
-$lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file", 40, $aGUIPos[3] - 333, 200)
+$lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder, Drag 'n Drop accepted.", 40, $aGUIPos[3] - 333, 300)
 $ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 125, 18)
 GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_DROPACCEPTED)
 $btnRestore2_Browse = GUICtrlCreateButton("...", $aGUIPos[2] - 82, $aGUIPos[3] - 314, 20, 20, $BS_BITMAP)
@@ -213,15 +228,19 @@ GUISetOnEvent($GUI_EVENT_CLOSE, "SpecialEvents")
 ;#End of GUI creation
 
 ;//Tray stuff
-$hTrayAddShred = TrayCreateItem("Add File-Shredder")
+$hTrayAddShred = TrayCreateItem("Integrate File-Shredder")
 TrayItemSetOnEvent(-1, "_AddShredderCM")
+_GUICtrlMenu_SetItemBmp(TrayItemGetHandle(0), 0, _WinAPI_Create32BitHBITMAP(_WinAPI_ShellExtractIcon("_Res\kwikdisk.ico", 0, 18, 18), 1, 1))
 $hTrayMenuPurge = TrayCreateMenu("Purge")
 $hTrayPurgeDir = TrayCreateItem("YourData folder", $hTrayMenuPurge)
 TrayItemSetOnEvent(-1, "_PurgeDataDirCM")
-$hTrayPurgeLists = TrayCreateItem("All data lists", $hTrayMenuPurge)
+_GUICtrlMenu_SetItemBmp(TrayItemGetHandle($hTrayMenuPurge), 0, _WinAPI_Create32BitHBITMAP(_WinAPI_ShellExtractIcon("_Res\1442169766_MB__LOCK.ico", 0, 16, 16), 1, 1))
+$hTrayPurgeLists = TrayCreateItem("Saved data lists", $hTrayMenuPurge)
 TrayItemSetOnEvent(-1, "_PurgeListsCM")
-$hTrayPurgeLists = TrayCreateItem("All Windows traces", $hTrayMenuPurge)
+_GUICtrlMenu_SetItemBmp(TrayItemGetHandle($hTrayMenuPurge), 1, _WinAPI_Create32BitHBITMAP(_WinAPI_ShellExtractIcon("_Res\1442169766_MB__LOCK.ico", 0, 16, 16), 1, 1))
+$hTrayPurgeLists = TrayCreateItem("All Windows activities", $hTrayMenuPurge)
 TrayItemSetOnEvent(-1, "_PurgeRecentsCM")
+_GUICtrlMenu_SetItemBmp(TrayItemGetHandle($hTrayMenuPurge), 2, _WinAPI_Create32BitHBITMAP(_WinAPI_ShellExtractIcon("_Res\windows.ico", 0, 16, 16), 1, 1))
 $hTrayAbout = TrayCreateItem("About")
 TrayItemSetOnEvent(-1, "_AboutCM")
 TrayCreateItem("")
@@ -244,9 +263,11 @@ WEnd
 Func HideAllControls($bHideNextBtn = True)
 	GUICtrlSetState($cPic, $GUI_HIDE)
 	GUIRegisterMsg($WM_TIMER, "")
+	GUICtrlSetState($cbBkUp3_Compress, $GUI_HIDE)
 	GUICtrlSetState($lBkUp3_Pwd, $GUI_HIDE)
 	GUICtrlSetState($lBkUp3_PwdConfirm, $GUI_HIDE)
 	GUICtrlSetState($ipBkUp3_Pwd, $GUI_HIDE)
+	GUICtrlSetState($hBkUp3_Settings, $GUI_HIDE)
 	GUICtrlSetState($ipBkUp3_PwdConfirm, $GUI_HIDE)
 	GUICtrlSetState($cbBkUp3_ShowPwd, $GUI_HIDE)
 	GUICtrlSetState($btnOriginal_Backup, $GUI_HIDE)
@@ -293,8 +314,9 @@ Func Restore2()
 EndFunc   ;==>Restore2
 
 Func Restore3()
-	If Not StringRegExp(GUICtrlRead($ipRestore2_ArchiveDir), "^(.*\\)(.*)") Then
-		MsgBox(64, $g_sProgramName, "Please select a container file to restore from.")
+	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
+	If Not StringRegExp($sContainerPath, "^(.*\\)(.*)") Then
+		MsgBox(64, $g_sProgramName, "Please select a container file/folder to restore from.")
 		Return
 	EndIf
 	HideAllControls(False)
@@ -319,50 +341,55 @@ Func Restore4()
 	$sTempDir = $g_sScriptDir & "\YourData"
 	$sPwd = GUICtrlRead($ipRestore3_Pwd)
 	$sPwdHashed = _DerivePwd($sPwd)
-	
+	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
+
 	HideAllControls(False)
 	GUICtrlSetState($cPic, $GUI_SHOW)
 	GUIRegisterMsg($WM_TIMER, "PlayAnim");//Show and play loading animation
 	GUICtrlSetState($btnBack, $GUI_HIDE)
 	GUICtrlSetState($btnNext, $GUI_DISABLE)
-	$aGUIPos = WinGetPos($hGUI)
 	
+	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
 	;//Decrypt
-	$sReport &= "Decrypting container.." & @CRLF
+	$aGUIPos = WinGetPos($hGUI)
 	$lRestore4_Status = GUICtrlCreateLabel("Decrypting container..", ($aGUIPos[2] / 2) - 145, $aGUIPos[3] - 213, 280, 30, BitOR(0x0200, 0x01))
 	GUICtrlSetFont($lRestore4_Status, 11, 550, Default, "Segoe UI")
 	GUICtrlSetResizing($lRestore4_Status, 8 + 32 + 128 + 768)
-	If FileExists("_temp.zip") Then _FileShred($sTempZip)
-	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
-	_Crypt_DecryptFile(StringReplace(GUICtrlRead($ipRestore2_ArchiveDir), "\\", "\"), $g_sScriptDir & "\_temp.zip", $hKey, $CALG_USERKEY)
-	$iError = @error
-	_Crypt_DestroyKey($hKey)
+	$sReport &= "Decrypting container.." & @CRLF
 	
-	If Not $iError Then
-		For $i = 0 To 30
-			If FileExists("_temp.zip") Then ExitLoop
-			Sleep(200)
-		Next
-		
-		;//Extract data
-		GUICtrlSetData($lRestore4_Status, "Extracting compressed data..")
-		_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
-		If $iError Then
-			$sReport &= "Error extracting archive. Code: " & $iError & @CRLF
-		Else
-			$sReport &= "Everything extracted to " & $sTempDir & @CRLF
-			$sReport &= "Shredding leftovers.." & @CRLF
-		EndIf
-		_FileShred($sTempZip)
+	If StringRegExp(FileGetAttrib($sContainerPath), "D") Then ;//Container is folder, therefore wasn't compressed.
+		_Crypt_DecryptFolder($sContainerPath, $g_sScriptDir & "\YourData", $hKey, $CALG_USERKEY)
 	Else
-		$sTemp = $iError
-		$sReport &= "Error decrypting container - " & StringReplace($sTemp, "420", "Invalid password.") & @CRLF
+		If FileExists("_temp.zip") Then _FileShred($sTempZip)
+		_Crypt_DecryptFile(StringReplace(GUICtrlRead($ipRestore2_ArchiveDir), "\\", "\"), $g_sScriptDir & "\_temp.zip", $hKey, $CALG_USERKEY)
+		$iError = @error		
+		If Not $iError Then
+			For $i = 0 To 30
+				If FileExists("_temp.zip") Then ExitLoop
+				Sleep(200)
+			Next
+			
+			;//Extract data
+			GUICtrlSetData($lRestore4_Status, "Extracting compressed data..")
+			_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
+			If $iError Then
+				$sReport &= "Error extracting archive. Code: " & $iError & @CRLF
+			Else
+				$sReport &= "Everything extracted to " & $sTempDir & @CRLF
+				$sReport &= "Shredding leftovers.." & @CRLF
+			EndIf
+			_FileShred($sTempZip)
+		Else
+			$sTemp = $iError
+			$sReport &= "Error decrypting container - " & StringReplace($sTemp, "420", "Invalid password.") & @CRLF
+		EndIf
 	EndIf
 	$sReport &= "Restoration finished." & @CRLF
-	
+	_Crypt_DestroyKey($hKey)
 	;//Remaining GUI stuff
 	GUICtrlSetData($lRestore4_Status, "")
-	$eReport = GUICtrlCreateEdit($sReport, 10, 10, $aGUIPos[2] - 38, 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
+	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
+	$eReport = GUICtrlCreateEdit($sReport, 10, 10, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	GUICtrlSetState($btnNext, $GUI_ENABLE)
 	_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
@@ -461,6 +488,9 @@ Func ToBkUp3()
 	
 	;//GUI stuff
 	HideAllControls(False)
+	GUICtrlSetState($hBkUp3_Settings, $GUI_SHOW)
+	GUICtrlSetState($cbBkUp3_Compress, $GUI_SHOW)
+	GUICtrlSetState($cbBkUp3_Compress, IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "COMPRESS_DATA", $GUI_CHECKED))
 	GUICtrlSetState($lBkUp3_Pwd, $GUI_SHOW)
 	GUICtrlSetState($ipBkUp3_Pwd, $GUI_SHOW)
 	If GUICtrlRead($cbBkUp3_ShowPwd) = $GUI_UNCHECKED Then
@@ -468,14 +498,13 @@ Func ToBkUp3()
 		GUICtrlSetState($lBkUp3_PwdConfirm, $GUI_SHOW)
 	EndIf
 	GUICtrlSetState($cbBkUp3_ShowPwd, $GUI_SHOW)
-	GUICtrlSetOnEvent($ipBkUp3_Pwd, "ToBkUp4")
 	
 	GUICtrlSetOnEvent($btnNext, "ToBkUp4")
 	GUICtrlSetOnEvent($btnBack, "ToBkUp2")
 EndFunc   ;==>ToBkUp3
 
 Func _ConvertDefaultFolderPath($sFolder)
-	;//Replace default folders like "Documents" with actual dir path stored in [$i][1]
+	;//Replace default folders like "Documents" with actual dir path like C:\Users\Sam\Documents, which is stored in [$i][1]
 	For $i = 0 To $g_nDefaultFoldersCount - 1
 		If $sFolder = $g_aDefaultFolders[$i][0] Then
 			$sFolder = $g_aDefaultFolders[$i][1]
@@ -487,7 +516,7 @@ EndFunc   ;==>_ConvertDefaultFolderPath
 
 Func ToBkUp4()
 	;//Main step in backup, compress & store files in an encrypted container
-	Local $sReport
+	Local $sReport, $nIndex
 	$sPwd = GUICtrlRead($ipBkUp3_Pwd)
 	If Not $sPwd Then
 		MsgBox(64, $g_sProgramName, "Please enter a Password.")
@@ -498,75 +527,97 @@ Func ToBkUp4()
 		Return
 	EndIf
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", GUICtrlRead($cbBkUp3_ShowPwd))
+	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "COMPRESS_DATA", GUICtrlRead($cbBkUp3_Compress))
 	HideAllControls(True)
 	GUICtrlSetState($cPic, $GUI_SHOW)
 	GUIRegisterMsg($WM_TIMER, "PlayAnim")
 	GUICtrlSetState($btnNext, $GUI_SHOW)
 	$sPwdHashed = _DerivePwd($sPwd)
-	$sReport &= "Compressing your data.." & @CRLF
-	$aCtrlPos = ControlGetPos($hGUI, "", $cPic)
-	$lBkUp4_Status = GUICtrlCreateLabel("Compressing your data..", ($aCtrlPos[2] / 2) - 145, $aCtrlPos[3] - 110, 280, 24, BitOR(0x0200, 0x01))
-	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", ($aCtrlPos[2] / 2) - 150, $aCtrlPos[3] - 80, 280, 20, BitOR(0x0200, 0x01))
-	GUICtrlSetResizing($lBkUp4_Status, 8 + 32 + 128 + 768)
-	GUICtrlSetResizing($lBkUp4_CurrentFile, 8 + 32 + 128 + 768);Centered
-	GUICtrlSetFont($lBkUp4_Status, 11, 550, Default, "Segoe UI")
-	GUICtrlSetState($btnNext, $GUI_DISABLE)
-	$sTempZip = $g_sScriptDir & "\_temp.zip"
-	_Zip_Create($sTempZip, 1)
-	AdlibRegister("HideCompressing", 20)
-	For $i = 0 To 20
-		Sleep(200)
-		If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
-	Next
-	For $i = 0 To UBound($g_aToBackupItems, 1) - 1
-		If Mod($i, 8) = 0 Then Sleep(1500);Take a break every 8 items processed
-		$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
-		GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
-		_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096)
-		If @error Then
-			If @error = 9 Then
-				$sReport &= $sFileToCompress & " filename duplicate, renaming.." & @CRLF
-				$sTemp = "_" & Random(1, 9, 1)
-				$sNewFileName = StringRegExpReplace($sFileToCompress, "^(.*\\)(.*)(\.\w+)", "$1$2" & $sTemp & "$3")
-				FileRename($sFileToCompress, $sNewFileName)
-				For $a = 0 To 10
-					Sleep(50)
-					If FileExists($sNewFileName) Then ExitLoop
-				Next
-				_Zip_AddItem($sTempZip, $sNewFileName, "", 4 + 8 + 16 + 1024)
-				FileRename($sNewFileName, $sFileToCompress)
-			Else
-				$sReport &= $sFileToCompress & " compression failed. Error: " & @error & @CRLF
-			EndIf
-		Else
-			$sReport &= $sFileToCompress & " successfully compressed." & @CRLF
-		EndIf
-	Next
-	AdlibUnRegister("HideCompressing")
-	GUICtrlSetData($lBkUp4_CurrentFile, "")
-	$sReport &= "Encrypting data.." & @CRLF
-	GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
-	If FileExists("EncryptedContainer") Then
-		$sReport &= "EncryptedContainer already exists, overwriting.." & @CRLF
-		_FileShred($g_sScriptDir & "\EncryptedContainer")
+	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
+	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
+	$lBkUp4_Status = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 120, $aCtrlPos[0], 24, BitOR(0x0200, 0x01))
+	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 95, $aCtrlPos[0], 20, BitOR(0x0200, 0x01))
+	If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then;Use Zip encryption
+		$sReport &= "Compressing your data.." & @CRLF
+		$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
+		GUICtrlSetData($lBkUp4_Status, "Compressing your data..")
+		GUICtrlSetResizing($lBkUp4_Status, 8 + 32 + 128 + 768)
+		GUICtrlSetResizing($lBkUp4_CurrentFile, 8 + 32 + 128 + 768);Centered
+		GUICtrlSetFont($lBkUp4_Status, 11, 550, Default, "Segoe UI")
+		GUICtrlSetState($btnNext, $GUI_DISABLE)
+		$sTempZip = $g_sScriptDir & "\_temp.zip"
+		_Zip_Create($sTempZip, 1)
+		AdlibRegister("HideCompressing", 20)
 		For $i = 0 To 20
 			Sleep(200)
-			If _FileWriteAccessible($g_sScriptDir & "\EncryptedContainer") = 1 Then ExitLoop
+			If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 		Next
+		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Add items to zip
+			If Mod($i, 8) = 0 Then Sleep(1500) ;Take a break every 8 items processed
+			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
+			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
+			_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096)
+			If @error Then
+				If @error = 9 Then
+					$sReport &= $sFileToCompress & " filename duplicate, renaming.." & @CRLF
+					$sTemp = "_" & Random(1, 9, 1)
+					$sNewFileName = StringRegExpReplace($sFileToCompress, "^(.*\\)(.*)(\.\w+)", "$1$2" & $sTemp & "$3")
+					FileRename($sFileToCompress, $sNewFileName)
+					For $a = 0 To 10
+						Sleep(50)
+						If FileExists($sNewFileName) Then ExitLoop
+					Next
+					_Zip_AddItem($sTempZip, $sNewFileName, "", 4 + 8 + 16 + 1024)
+					FileRename($sNewFileName, $sFileToCompress)
+				Else
+					$sReport &= $sFileToCompress & " compression failed. Error: " & @error & @CRLF
+				EndIf
+			Else
+				$sReport &= $sFileToCompress & " successfully compressed." & @CRLF
+			EndIf
+		Next ;// Finished adding items to zip
+		AdlibUnRegister("HideCompressing")
+		$sReport &= "Encrypting data.." & @CRLF
+		GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
+		If FileExists("EncryptedContainer") Then
+			$sReport &= "EncryptedContainer already exists, overwriting.." & @CRLF
+			_FileShred($g_sScriptDir & "\EncryptedContainer")
+			For $i = 0 To 20
+				Sleep(200)
+				If _FileWriteAccessible($g_sScriptDir & "\EncryptedContainer") = 1 Then ExitLoop
+			Next
+		EndIf
+		_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\EncryptedContainer", $hKey, $CALG_USERKEY)
+		$iError = @error
+		If $iError Then $sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
+		GUICtrlSetData($lBkUp4_Status, "Shredding leftovers..")
+		_FileShred($sTempZip)
+		If $iError Then $sReport &= "Error shredding leftover." & @CRLF
+		$sReport &= "File saved to " & $g_sScriptDir & "\EncryptedContainer" & @CRLF
+	Else ;//No compression, only encrypt files/folders
+		For $i = 0 To UBound($g_aToBackupItems, 1) - 1
+			$sFileToEncrypt = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
+			GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
+			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToEncrypt)
+			$aTemp = StringRegExp($sFileToEncrypt, "^(.*\\)(.*)$", 3)
+			If StringRegExp(FileGetAttrib($sFileToEncrypt), "D") Then
+				_Crypt_EncryptFolder($sFileToEncrypt, $g_sScriptDir & "\EncryptedData\" & $aTemp[1], $hKey, $CALG_USERKEY)
+			Else
+				$sDestFile = _Crypt_EncryptData($aTemp[1], $hKey, $CALG_USERKEY)
+				While FileExists($g_sScriptDir & "\EncryptedData\" & $sDestFile) ;//File already exists
+					$nIndex = "(" & $nIndex + 1 & ")"
+					$sDestFile = BinaryToString(_Crypt_EncryptData($aTemp[1] & $nIndex, $hKey, $CALG_USERKEY))
+				WEnd
+				_Crypt_EncryptFile($sFileToEncrypt, $g_sScriptDir & "\EncryptedData\" & $sDestFile, $hKey, $CALG_USERKEY)
+			EndIf
+		Next
+		$sReport &= "Encryption finished. Destination folder: " & $g_sScriptDir & "\EncryptedData"
 	EndIf
-	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
-	_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\EncryptedContainer", $hKey, $CALG_USERKEY)
-	$iError = @error
 	_Crypt_DestroyKey($hKey)
-	If $iError Then $sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
-	GUICtrlSetData($lBkUp4_Status, "Shredding leftovers..")
-	_FileShred($sTempZip)
-	If $iError Then $sReport &= "Error shredding leftover." & @CRLF
-	$aGUIPos = WinGetPos($hGUI)
-	If Not $sReport Then $sReport = "No errors were encountered." & @CRLF
-	$sReport &= "File saved to " & $g_sScriptDir & "\EncryptedContainer" & @CRLF
+	GUICtrlSetData($lBkUp4_CurrentFile, "")
 	GUICtrlSetData($lBkUp4_Status, "")
-	$eReport = GUICtrlCreateEdit($sReport, 10, 10, $aGUIPos[2] - 38, 200, BitOR($WS_VSCROLL, $ES_READONLY))
+	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
+	$eReport = GUICtrlCreateEdit($sReport, 10, 10, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY))
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
 	GUICtrlSetState($cPic, $GUI_HIDE)
@@ -583,7 +634,13 @@ Func ToBkUp5()
 	_GUICtrlListView_DeleteAllItems($lvBkUp2_BackupList)
 	_GUICtrlButton_SetImage($btnNext, $g_sScriptDir & "\_Res\Next.bmp")
 	BkUp2_SelectAll($lvBkUp2_BackupList)
-	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then _WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\EncryptedContainer")
+	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then 
+		If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then
+			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\EncryptedContainer")
+		Else
+			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\EncryptedData")
+		EndIf
+	EndIf	
 	ToOriginal()
 EndFunc   ;==>ToBkUp5
 
@@ -694,13 +751,16 @@ Func BkUp2_SelectList();Switch to a new list, load all items from respective lis
 EndFunc   ;==>BkUp2_SelectList
 
 Func Restore2_Browse()
-	$sTemp = FileOpenDialog("Select encrypted container", $g_sScriptDir, "All files (*.*)")
+	$sTemp = FileOpenDialog("Select encrypted container file", $g_sScriptDir, "All files (*.*)")
+	If Not $sTemp Then
+		If MsgBox(4, $g_sProgramName, "No container file was selected, select a container folder instead?") = 6 Then $sTemp = FileSelectFolder("Select encrypted container folder", $g_sScriptDir)
+	EndIf	
 	GUICtrlSetData($ipRestore2_ArchiveDir, $sTemp)
 EndFunc   ;==>Restore2_Browse
 
 Func _DerivePwd($sPwdToDerive);//Make user pwd longer
 	Local $sResult
-	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2) & StringTrimLeft(_Crypt_HashData(StringReverse($sPwdToDerive), $CALG_SHA1), 2) & StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_MD5), 2)
+	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2)
 	$sResult &= StringReverse($sResult)
 	Return $sResult
 EndFunc   ;==>_DerivePwd
@@ -771,19 +831,19 @@ Func _AddDefaultFoldersToLV($hWnd)
 	#ce
 	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then
 		;//Back up Chrome data
-		_ArrayAdd($g_aDefaultFolders, "Chrome Data|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultFolders, "Chrome Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Chrome Data|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default|\_Res\Chrome.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then
 		;//Back up Chromium data
-		_ArrayAdd($g_aDefaultFolders, "Chromium Data|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default|\_Res\Chromium.bmp")
+		If _ArraySearch($g_aDefaultFolders, "Chromium Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Chromium Data|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default|\_Res\Chromium.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Mozilla\Firefox\Profiles") Then
 		;//Back up Firefox data
-		_ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
+		If _ArraySearch($g_aDefaultFolders, "Firefox Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable") Then
 		;//Back up Opera data
-		_ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
+		If _ArraySearch($g_aDefaultFolders, "Opera Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Opera Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
 	EndIf
 	_GUICtrlListView_BeginUpdate($hWnd)
 	For $i = 0 To UBound($g_aDefaultFolders) - 1
@@ -802,7 +862,7 @@ Func _AddShredderCM()
 		RegWrite("HKCR\*\shell\Shred\", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
 		RegWrite("HKCR\Directory\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
 		RegWrite("HKCR\Directory\shell\Shred", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
-		MsgBox(64, $g_sProgramName, "Right-click [Shred] context menu added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
+		MsgBox(64, $g_sProgramName, "Right-click [Shred] context menu has been added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
 	Else
 		ShellExecute(@AutoItExe, "/add", "", "runas")
 		;MsgBox(16, $g_sProgramName, "Administrative privileges required.")
@@ -845,28 +905,58 @@ Func _PurgeDataDirCM()
 EndFunc   ;==>_PurgeDataDirCM
 
 Func _PurgeRecentsCM()
-	If MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/jump lists in Windows." & @CRLF & "Proceed?") = 6 Then
+	Local $sLogPurged
+	If MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/pinned items/jump lists in Windows." & @CRLF & @CRLF & "Proceed?") = 6 Then
 		_PurgeDir(@AppDataDir & "\Microsoft\Windows\Recent")
-		If MsgBox(4, $g_sProgramName, "Clear event logs?") = 6 Then
-			If IsAdmin() Then
-				$hEventLog = _EventLog__Open("", "Application")
-				_EventLog__Clear($hEventLog, "")
-				_EventLog__Close($hEventLog)
-				$hEventLog = _EventLog__Open("", "System")
-				_EventLog__Clear($hEventLog, "")
-				_EventLog__Close($hEventLog)
-				$hEventLog = _EventLog__Open("", "Security")
-				_EventLog__Clear($hEventLog, "")
-				_EventLog__Close($hEventLog)
-				RegWrite("HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", "REG_DWORD", 1)
-			Else
-				MsgBox(64, $g_sProgramName, "Unable to clear event logs. Administrative privileges required.")
-			EndIf
+		_PurgeRegCM()
+	EndIf
+	If MsgBox(4, $g_sProgramName, "Clear event logs (requires Admin)?") = 6 Then
+		If IsAdmin() Then
+			$hEventLog = _EventLog__Open("", "Application")
+			_EventLog__Clear($hEventLog, "")
+			_EventLog__Close($hEventLog)
+			$hEventLog = _EventLog__Open("", "System")
+			_EventLog__Clear($hEventLog, "")
+			_EventLog__Close($hEventLog)
+			$hEventLog = _EventLog__Open("", "Security")
+			_EventLog__Clear($hEventLog, "")
+			_EventLog__Close($hEventLog)
+			RegWrite("HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", "REG_DWORD", 1)
+		Else
+			$sLogPurged = " except Event Logs (requires Admin)"
 		EndIf
 	EndIf
+	MsgBox(64, $g_sProgramName, "Everything has been securely erased" & $sLogPurged & ". Please note that you might have still left traces within your registry.")
 EndFunc   ;==>_PurgeRecentsCM
 
 #Region Everything FileShredder
+
+Func _PurgeRegCM()
+	Local $iSys = StringReplace(StringRight(@OSArch, 2), '86', '')
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSavePidlMRU")
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedPidlMRU")
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedPidlMRULegacy")
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs")
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths")
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Microsoft\Windows\CurrentVersion\Explorer\StreamMRU")
+	_PurgeReg("HKEY_CURRENT_USER" & $iSys & "\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache")
+EndFunc   ;==>_PurgeRegCM
+
+Func _PurgeReg($sfRegKey)
+	Local $sNextRegKey
+	While 1
+		$sNextRegKey = RegEnumVal($sfRegKey, 1)
+		If @error Then ExitLoop
+		RegWrite($sfRegKey, $sNextRegKey, "REG_DWORD", _StringRepeat("000000", 30))
+		RegDelete($sfRegKey, $sNextRegKey)
+	WEnd
+	For $i = 1 To 4999
+		$sNextRegKey = RegEnumKey($sfRegKey, $i)
+		If @error Then ExitLoop
+		_PurgeReg($sfRegKey & "\" & $sNextRegKey)
+		RegDelete($sfRegKey)
+	Next
+EndFunc   ;==>_PurgeReg
 
 Func _PurgeDir($sDataDir);Shred all files in a folder - Recursive
 	$aFiles = _FileListToArray($sDataDir, '*', 1);List all files in dir
@@ -959,6 +1049,7 @@ EndFunc   ;==>HideCompressing
 
 Func ExitS()
 	If FileExists($g_sScriptDir & "\_temp.zip") Then _FileShred($g_sScriptDir & "\_temp.zip");Clean up
+	_Crypt_Shutdown()
 	Exit
 EndFunc   ;==>ExitS
 
@@ -1045,3 +1136,49 @@ Func _FileWriteAccessible($sFile)
 	_WinAPI_CloseHandle($hFile)
 	Return SetError($iError, $iError_Extended, $iSuccess)
 EndFunc   ;==>_FileWriteAccessible
+
+Func _Crypt_EncryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgID)
+	;//Recursively encrypts everything in a folder.
+	Local $sDestFile
+	If Not FileExists($_sDestinationFolder) Then DirCreate($_sDestinationFolder)
+	$aFiles = _FileListToArray($_sSourceFolder, '*', 1);List all files in dir
+	If IsArray($aFiles) Then
+		For $a = 1 To $aFiles[0]
+			$sDestFile = _Crypt_EncryptData($aFiles[$a], $_sKey, $_iAlgID)
+			_Crypt_EncryptFile($_sSourceFolder & "\" & $aFiles[$a], $_sDestinationFolder & "\" & $sDestFile, $_sKey, $_iAlgID)
+			If @error Then 
+				If @error > 530 Then 
+					MsgBox(16, 'Error occurred', 'Unable to encrypt piece, possibly file in use.')
+				Else
+					MsgBox(16, 'Error occurred', 'Error during encryption. Code ' & @error & @CRLF & 'Your data might be lost, be advised!')
+				EndIf	
+			EndIf	
+		Next
+	EndIf
+	$aFolders = _FileListToArray($_sSourceFolder, '*', 2);List all folders in dir
+	If IsArray($aFolders) Then
+		For $b = 1 To $aFolders[0]
+			$sDestFile = $aFolders[$b];_Crypt_EncryptData($aFolders[$b], $_sKey, $_iAlgID)
+			_Crypt_EncryptFolder($_sSourceFolder & "\" & $aFolders[$b], $_sDestinationFolder & "\" & $sDestFile, $_sKey, $_iAlgID)
+		Next
+	EndIf
+EndFunc   ;==>_Crypt_EncryptFolder
+Func _Crypt_DecryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgID)
+	Local $sDestFile
+	If Not FileExists($_sDestinationFolder) Then DirCreate($_sDestinationFolder)
+	$aFiles = _FileListToArray($_sSourceFolder, '*', 1);List all files in dir
+	If IsArray($aFiles) Then
+		For $a = 1 To $aFiles[0]
+			$sDestFile = BinaryToString(_Crypt_DecryptData($aFiles[$a], $_sKey, $_iAlgID))
+			_Crypt_DecryptFile($_sSourceFolder & "\" & $aFiles[$a], $_sDestinationFolder & "\" & $sDestFile, $_sKey, $_iAlgID)
+			If @error = 420 Then Return SetError(1)
+		Next
+	EndIf
+	$aFolders = _FileListToArray($_sSourceFolder, '*', 2);List all folders in dir
+	If IsArray($aFolders) Then
+		For $b = 1 To $aFolders[0]
+			$sDestFile = $aFolders[$b];_Crypt_EncryptData($aFolders[$b], $_sKey, $_iAlgID)
+			_Crypt_DecryptFolder($_sSourceFolder & "\" & $aFolders[$b], $_sDestinationFolder & "\" & $sDestFile, $_sKey, $_iAlgID)
+		Next
+	EndIf
+EndFunc   ;==>_Crypt_DecryptFolder
