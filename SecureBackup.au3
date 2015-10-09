@@ -19,9 +19,9 @@
 	//v1.1:
 	- Fixed "add files.." selection issue, strengthen derived password (v1.0 backups can't be retrieved with v1.1 or later)
 	//v1.2:
-	- [GUI]Corrected "show password" and loading animation's position.
-	- [List]Removed .txt requirement for lists, list names can't be empty, added option to purge all lists.
-	- [Other]Added Purge Folders shell for FileShredder, option to Purge YourData restoration folder.
+	- [GUI]Corrected "show password" and loading animation's position
+	- [List]Removed .txt requirement for lists, list names can't be empty, added option to purge all lists
+	- [Other]Added Purge Folders shell for FileShredder, option to Purge YourData restoration folder
 	//v1.3:
 	- [GUI] Modified "About"
 	- [List]Default folders are no longer de-selected when changing list, unchecked items are now saved
@@ -40,15 +40,18 @@
 	- [Other]Added option to purge jump lists and event logs in Windows, Icon for FileShredder, FileShredder can now handle UAC-locked files
 	- [Script]Replaced _FileInUse() with _FileWriteAccessible()
 	//v1.4.8:
-	- [Encryption]Shortened derived password for better performance, added compression-free encryption.
+	- [Encryption]Shortened derived password for better performance, added compression-free encryption
 	- [GUI]Corrected report area positioning, fixed various GUI bugs
-	- [Other]Some part of registry can be purged to remove activity traces
+	- [Other]Some part of registry are purged during Windows activity wipe to remove traces
+	//v1.5.0:
+	- [Encryption]Output containers are now named after profile name instead of "EncryptedContainer"
+	- [GUI]Cursor for Backup and Restore buttons
+	- [Other]Purge all history located in "AppDataLocal\Microsoft\Windows", "\AppData\Local\Microsoft\Windows\InetCache", "AppData\Media Cache" - WinClear
 	TODO: (high to low priority)
-	- Option to ignore compression and encrypt files only
-	- Registry freezer
+	- Possibly a way to selectively backup browser data instead of saving everything (ignore caches and flashplayer data)
 	- Option to put the files back where they originally were
-	- Generate html file to assist after the restore process
-	- Possibly a way to selectively backup browser data instead of saving everything (ignore cache and flashplayer data)
+	- Generate html file to assist the restoration process
+	- Registry freezer
 #ce
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -71,8 +74,8 @@
 #include <EventLog.au3>
 #include "_Zip.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.4.8.0)
-#pragma compile(FileVersion, 1.4.8.0)
+#pragma compile(ProductVersion, 1.5.0.0)
+#pragma compile(FileVersion, 1.5.0.0)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
@@ -115,8 +118,8 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.4.8.0";//Current use: only in _AboutCM()
-Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0]
+Global $g_sProgramVersion = "1.5.0.0"
+Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0], $sCurProfile
 
 ;//GUI elements declaration
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
@@ -172,7 +175,7 @@ If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
 $comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 140, $aGUIPos[3] - 75, 120)
 GUICtrlSetTip($comboBkUp2_Profile, "Select your list, new list will be created if list does not exist.")
 $hListFileSearch = FileFindFirstFile("ev_*")
-For $i = 0 To 50;Maximum 50 list files are registered.
+For $i = 0 To 50;Maximum 50 list profiles are registered.
 	$sListFileFullname = FileFindNextFile($hListFileSearch)
 	If @error Then ExitLoop
 	$aListFileReg = StringRegExp($sListFileFullname, "ev_(.+)", 3)
@@ -217,6 +220,9 @@ _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\File.bmp")
 _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Folder.bmp")
 
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
+
+GUICtrlSetCursor($btnOriginal_Backup, 0)
+GUICtrlSetCursor($btnOriginal_Restore, 0)
 
 GUISetOnEvent($GUI_EVENT_CLOSE, "SpecialEvents")
 ;#End of GUI creation
@@ -425,9 +431,8 @@ Func ToBkUp2()
 EndFunc   ;==>ToBkUp2
 
 Func ToBkUp3()
-	Local $a, $sTemp, $aAccelKeys, $sCurProfile = GUICtrlRead($comboBkUp2_Profile), $aAllItems[0], $sRegExPattern
-	ReDim $g_aToBackupItems[0]
-	
+	Local $a, $sTemp, $aAccelKeys, $aAllItems[0], $sRegExPattern
+	$sCurProfile = GUICtrlRead($comboBkUp2_Profile)
 	If Not $sCurProfile Then
 		MsgBox(16, $g_sProgramName, "List name must not be empty")
 		ControlFocus($hGUI, "", $comboBkUp2_Profile)
@@ -442,6 +447,7 @@ Func ToBkUp3()
 	EndIf
 	
 	;//Get ready to save to list file
+	ReDim $g_aToBackupItems[0]
 	For $i = 0 To _GUICtrlListView_GetItemCount($lvBkUp2_BackupList) - 1
 		$sBackupItem = _GUICtrlListView_GetItemText($lvBkUp2_BackupList, $i)
 		If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $i) = True Then
@@ -457,6 +463,7 @@ Func ToBkUp3()
 		Return
 	EndIf
 	
+	#Region List stuff
 	;//Generate [raw] string to save to list file, default folders are removed
 	For $i = 0 To UBound($aAllItems) - 1
 		$sTemp &= $aAllItems[$i] & "|"
@@ -479,6 +486,7 @@ Func ToBkUp3()
 	
 	;//Remember default folders' states
 	_DefaultFoldersStates_Save()
+	#EndRegion
 	
 	;//GUI stuff
 	HideAllControls(False)
@@ -541,16 +549,16 @@ Func ToBkUp4()
 		GUICtrlSetState($btnNext, $GUI_DISABLE)
 		$sTempZip = $g_sScriptDir & "\_temp.zip"
 		_Zip_Create($sTempZip, 1)
-		AdlibRegister("HideCompressing", 20)
+		AdlibRegister("HideCompressing", 20) ;// Workaround to hide "Compressing" popup windows
 		For $i = 0 To 20
 			Sleep(200)
 			If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 		Next
-		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Add items to zip
+		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Process all backup items read from listview
 			If Mod($i, 8) = 0 Then Sleep(1500) ;Take a break every 8 items processed
 			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
 			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
-			_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096)
+			_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096) ;// Add items to container
 			If @error Then
 				If @error = 9 Then
 					$sReport &= $sFileToCompress & " filename duplicate, renaming.." & @CRLF
@@ -573,21 +581,23 @@ Func ToBkUp4()
 		AdlibUnRegister("HideCompressing")
 		$sReport &= "Encrypting data.." & @CRLF
 		GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
-		If FileExists("EncryptedContainer") Then
-			$sReport &= "EncryptedContainer already exists, overwriting.." & @CRLF
-			_FileShred($g_sScriptDir & "\EncryptedContainer")
+		$sContainerName = $sCurProfile
+		If FileExists($sContainerName) Then
+			$sReport &= "Container " & $sContainerName & " already exists, overwriting.." & @CRLF
+			_FileShred($g_sScriptDir & "\" & $sContainerName)
 			For $i = 0 To 20
 				Sleep(200)
-				If _FileWriteAccessible($g_sScriptDir & "\EncryptedContainer") = 1 Then ExitLoop
+				If _FileWriteAccessible($g_sScriptDir & "\" & $sContainerName) = 1 Then ExitLoop
 			Next
 		EndIf
-		_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\EncryptedContainer", $hKey, $CALG_USERKEY)
-		$iError = @error
-		If $iError Then $sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
-		GUICtrlSetData($lBkUp4_Status, "Shredding leftovers..")
-		_FileShred($sTempZip)
-		If $iError Then $sReport &= "Error shredding leftover." & @CRLF
-		$sReport &= "File saved to " & $g_sScriptDir & "\EncryptedContainer" & @CRLF
+		_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\" & $sContainerName, $hKey, $CALG_USERKEY)
+		If @error Then 
+			$sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
+		Else	
+			GUICtrlSetData($lBkUp4_Status, "Shredding leftovers..")
+			_FileShred($sTempZip)
+			$sReport &= "File saved to " & $g_sScriptDir & "\" & $sContainerName & @CRLF
+		EndIf
 	Else ;//No compression, only encrypt files/folders
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1
 			$sFileToEncrypt = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
@@ -630,7 +640,7 @@ Func ToBkUp5()
 	BkUp2_SelectAll($lvBkUp2_BackupList)
 	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then 
 		If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then
-			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\EncryptedContainer")
+			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\" & $sCurProfile)
 		Else
 			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\EncryptedData")
 		EndIf
@@ -866,7 +876,7 @@ EndFunc   ;==>_AddShredderCM
 Func _AboutCM()
 	MsgBox(64, $g_sProgramName & " " & $g_sProgramVersion, "Ev-Secure Backup gathers your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
 			 & "Copyright(C) 2015 T.H. evorlet@wmail.io" & @CRLF _
-			 & "This software is open source and registered under GNU GPL license." & @CRLF _
+			 & "This software is open source and registered under GNU GPL." & @CRLF _
 			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
 EndFunc   ;==>_AboutCM
 
@@ -901,7 +911,12 @@ EndFunc   ;==>_PurgeDataDirCM
 Func _PurgeRecentsCM()
 	Local $sLogPurged
 	If MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/pinned items/jump lists in Windows." & @CRLF & @CRLF & "Proceed?") = 6 Then
+		TrayTip($g_sProgramName, "Shredding files, this may take a while..", 4, 1)
 		_PurgeDir(@AppDataDir & "\Microsoft\Windows\Recent")
+		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\INetCache\IE") ;Win10
+		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\Temporary Internet Files\Low\Content.IE5") ;Win7-8
+		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\History")
+		_PurgeDir(@UserProfileDir & "\AppData\Media Cache")
 		_PurgeRegCM()
 	EndIf
 	If MsgBox(4, $g_sProgramName, "Clear event logs (requires Admin)?") = 6 Then
