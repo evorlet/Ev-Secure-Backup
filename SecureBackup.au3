@@ -1,5 +1,5 @@
 #cs
-	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
+	Ev-Secure Backup - Gather your files in one place and encrypt them for easier and more secure backup.
 
 	Copyright (C) 2015 T.H.
 	This program is free software: you can redistribute it and/or modify
@@ -874,7 +874,7 @@ Func _AddShredderCM()
 EndFunc   ;==>_AddShredderCM
 
 Func _AboutCM()
-	MsgBox(64, $g_sProgramName & " " & $g_sProgramVersion, "Ev-Secure Backup gathers your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
+	MsgBox(64, $g_sProgramName & " " & $g_sProgramVersion, "Gather your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
 			 & "Copyright(C) 2015 T.H. evorlet@wmail.io" & @CRLF _
 			 & "This software is open source and registered under GNU GPL." & @CRLF _
 			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
