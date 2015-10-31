@@ -1,5 +1,5 @@
 #cs
-	Ev-Secure Backup - Gather your files in one place and encrypt them for easier and more secure backup.
+	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
 	Copyright (C) 2015 T.H.
 	This program is free software: you can redistribute it and/or modify
@@ -47,11 +47,13 @@
 	- [Encryption]Output containers are now named after profile name instead of "EncryptedContainer"
 	- [GUI]Cursor for Backup and Restore buttons
 	- [Other]Purge all history located in "AppDataLocal\Microsoft\Windows", "\AppData\Local\Microsoft\Windows\InetCache", "AppData\Media Cache" - WinClear
+	//v1.5.3
+	- [GUI]Metro GUI overhaul
 	TODO: (high to low priority)
 	- Possibly a way to selectively backup browser data instead of saving everything (ignore caches and flashplayer data)
+	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
 	- Generate html file to assist the restoration process
-	- Registry freezer
 #ce
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -73,9 +75,11 @@
 #include <WinAPIEx.au3>
 #include <EventLog.au3>
 #include "_Zip.au3"
+#include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
 #pragma compile(ProductVersion, 1.5.0.0)
 #pragma compile(FileVersion, 1.5.0.0)
+#pragma compile(UPX, False)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
@@ -104,7 +108,6 @@ If $CmdLine[0] >= 1 Then
 	Exit
 EndIf
 
-Opt("GUIOnEventMode", 1)
 Opt("TrayAutoPause", 0)
 Opt("TrayMenuMode", 3)
 Opt('TrayOnEventMode', 1)
@@ -119,41 +122,46 @@ Global Const $STM_SETIMAGE = 0x0172
 Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
 Global $g_sProgramVersion = "1.5.0.0"
-Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 30, $g_aProfiles[0], $sCurProfile
+Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 40, $g_aProfiles[0], $sCurProfile, $sState
 
 ;//GUI elements declaration
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
 Global $hBkUp2_ContextMenu, $cmBkUp2_SelectAll, $lBkUp4_CurrentFile, $lBkUp4_Status, $eReport, $btnOriginal_Backup, $btnOriginal_Restore
 Global $nSizeColumn, $btnNext, $lBkUp3_Pwd, $lBkUp3_PwdConfirm, $ipBkUp3_Pwd, $ipBkUp3_PwdConfirm, $btnOriginal_Restore, $cbBkUp3_ShowPwd
 Global $lvBkUp2_BackupList, $btnOriginal_Backup
-
+Global $aGUIPos[] = [0,0,400,500]
 ;//GUI creation
-$hGUI = GUICreate($g_sProgramName, 400, 500, -1, 100, BitOR(0x00020000, 0x00040000), $WS_EX_ACCEPTFILES)
-$aGUIPos = WinGetPos($hGUI)
+
+;$hGUI = GUICreate($g_sProgramName, 400, 500, -1, 100, BitOR($WS_MINIMIZEBOX, $WS_SIZEBOX), $WS_EX_ACCEPTFILES)
+_SetTheme("WhiteBlue")
+$hGUIx =_Metro_CreateGUI($g_sProgramName, 403, 500, -1, 100, True, True)
+$GUI_HOVER_REG = $hGUIx[1]
+$hGUI = $hGUIx[0]
+$GUI_CLOSE_BUTTON = $hGUIx[2]
+$GUI_MAXIMIZE_BUTTON = $hGUIx[3]
+$GUI_RESTORE_BUTTON = $hGUIx[4]
+$GUI_MINIMIZE_BUTTON = $hGUIx[5]
 
 ;//Create global GUI elements that will be re-used through the stages
 $cPic = GUICtrlCreatePic("", 50, 0, $aGUIPos[2], $aGUIPos[2]);Loading Animation
 GUICtrlSetResizing($cPic, 8 + 32 + 128 + 768)
 GUICtrlSetState($cPic, $GUI_HIDE)
-$btnNext = GUICtrlCreateButton("Next", 308, 435, 70, 30, $BS_BITMAP)
-_GUICtrlButton_SetImage($btnNext, $g_sScriptDir & "\_Res\Next.bmp")
+$btnNext = _Metro_CreateButtonEx($GUI_HOVER_REG, "Next", 308, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnNext, 768 + 64);HCentered
-$btnBack = GUICtrlCreateButton("Back", 18, 435, 70, 30, $BS_BITMAP)
-_GUICtrlButton_SetImage($btnBack, $g_sScriptDir & "\_Res\Back.bmp")
+$btnBack = _Metro_CreateButtonEx($GUI_HOVER_REG, "Back", 18, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnBack, 768 + 64);HCentered
-$btnOriginal_Backup = GUICtrlCreateButton("Backup", 140, 155, 120, 60, $BS_BITMAP)
-_GUICtrlButton_SetImage($btnOriginal_Backup, $g_sScriptDir & "\_Res\Backup.bmp")
-GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
 
 ;//Create startup GUI elements (first step)
-$btnOriginal_Restore = GUICtrlCreateButton("Restore", 140, 245, 120, 60, $BS_BITMAP)
-_GUICtrlButton_SetImage($btnOriginal_Restore, $g_sScriptDir & "\_Res\Restore.bmp")
+$btnOriginal_Backup = _Metro_CreateButtonEx($GUI_HOVER_REG, "Backup", 144, 170, 120, 60, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
+$btnOriginal_Restore = _Metro_CreateButtonEx($GUI_HOVER_REG, "Restore", 144, 260, 120, 60, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
-$lOriginal_Credit = GUICtrlCreateLabel("Copyright(C) 2015 T.H. evorlet@wmail.io", 195, 453)
+$lOriginal_Credit = GUICtrlCreateLabel("Copyright(C) 2015 T.H. evorlet@wmail.io", 195, 470)
+
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
 ;//Create stage-2 Backup GUI elements
-$lvBkUp2_BackupList = GUICtrlCreateListView("File", 5, 5, $aGUIPos[2] - 27, $aGUIPos[3] - 95)
+$lvBkUp2_BackupList = GUICtrlCreateListView("File", 15, 40, $aGUIPos[2] - 27, $aGUIPos[3] - 95)
 _GUICtrlListView_SetExtendedListViewStyle($lvBkUp2_BackupList, BitOR($LVS_EX_FULLROWSELECT, $LVS_EX_CHECKBOXES))
 $nSizeColumn = _GUICtrlListView_AddColumn($lvBkUp2_BackupList, "Size")
 GUICtrlSetResizing($lvBkUp2_BackupList, 32 + 64 + 4 + 2);Centered+Poly
@@ -163,16 +171,12 @@ $cmBkUp2_AddBackupItem = GUICtrlCreateMenuItem("Add files..", $hBkUp2_ContextMen
 $cmBkUp2_AddBackupFolder = GUICtrlCreateMenuItem("Add folder..", $hBkUp2_ContextMenu)
 $cmBkUp2_RemoveBackupItem = GUICtrlCreateMenuItem("Remove from list", $hBkUp2_ContextMenu)
 $cmBkUp2_SelectAll = GUICtrlCreateMenuItem("Select-All", $hBkUp2_ContextMenu)
-GUICtrlSetOnEvent($cmBkUp2_OpenLocation, "BkUp2_OpenFileLocation")
-GUICtrlSetOnEvent($cmBkUp2_AddBackupItem, "BkUp2_AddFiles")
-GUICtrlSetOnEvent($cmBkUp2_AddBackupFolder, "BkUp2_AddFolder")
-GUICtrlSetOnEvent($cmBkUp2_RemoveBackupItem, "BkUp2_RemoveSelected")
-GUICtrlSetOnEvent($cmBkUp2_SelectAll, "BkUp2_SelectAllCM")
 
-;//Listview creation
+
+
 $sLastListUsed = IniRead("_Res\Settings.ini", "General", "LAST_USED_LIST", "MyNewList")
 If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
-$comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 140, $aGUIPos[3] - 75, 120)
+$comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 140, $aGUIPos[3] - 38, 120)
 GUICtrlSetTip($comboBkUp2_Profile, "Select your list, new list will be created if list does not exist.")
 $hListFileSearch = FileFindFirstFile("ev_*")
 For $i = 0 To 50;Maximum 50 list profiles are registered.
@@ -183,10 +187,10 @@ For $i = 0 To 50;Maximum 50 list profiles are registered.
 	_ArrayAdd($g_aProfiles, $aListFileReg[0])
 Next
 GUICtrlSetResizing($comboBkUp2_Profile, 768 + 64 + 8);HCentered
-GUICtrlSetOnEvent($comboBkUp2_Profile, "BkUp2_SelectList")
 
 ;//Create stage-3 Backup GUI elements
 $lBkUp3_Pwd = GUICtrlCreateLabel("Pick your Password:", 40, 130, 200)
+
 $bShowPwd = IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", $GUI_UNCHECKED)
 $ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 150, $aGUIPos[2] - 100, 18)
 If $bShowPwd = $GUI_UNCHECKED Then GUICtrlSetStyle($ipBkUp3_Pwd, 0x0020)
@@ -195,24 +199,23 @@ $ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 100, 18, 0x0
 $cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 230, 130)
 $hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 47)
 $cbBkUp3_Compress = GUICtrlCreateCheckbox("Compress data", 45, 298, 130)
+
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
 GUICtrlSetState($cbBkUp3_ShowPwd, $bShowPwd)
 
 ;//Create stage-4 Backup GUI elements
-$cbBkUp4_ShowEncryptedFile = GUICtrlCreateCheckbox("Show result file", 160, $aGUIPos[3] - 77)
+$cbBkUp4_ShowEncryptedFile = GUICtrlCreateCheckbox("Show result file", 160, $aGUIPos[3] - 43)
 GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_CHECKED)
 
 ;//Create stage-2 Restore GUI elements(first in Restore)
-$lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder, Drag 'n Drop accepted.", 40, $aGUIPos[3] - 333, 300)
-$ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 125, 18)
+$lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder.", 40, $aGUIPos[3] - 333, 300)
+$ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 314, $aGUIPos[2] - 125, 20)
 GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_DROPACCEPTED)
-$btnRestore2_Browse = GUICtrlCreateButton("...", $aGUIPos[2] - 82, $aGUIPos[3] - 314, 20, 20, $BS_BITMAP)
-_GUICtrlButton_SetImage($btnRestore2_Browse, $g_sScriptDir & "\_Res\Browse.bmp")
+$btnRestore2_Browse = _Metro_CreateButtonEx($GUI_HOVER_REG, "...", $aGUIPos[2] - 82, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 
 ;//Create stage-3 Restore GUI elements
 $lRestore3_Pwd = GUICtrlCreateLabel("Enter the Password used during backup process", 40, $aGUIPos[3] - 333)
 $ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 103, 18)
-GUICtrlSetOnEvent($cbBkUp3_ShowPwd, "BkUp3_ShowPassword")
 
 ;//Icons for BkUp2_ListView
 $hImage = _GUIImageList_Create(16, 16)
@@ -221,10 +224,6 @@ _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Folder.bmp")
 
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
 
-GUICtrlSetCursor($btnOriginal_Backup, 0)
-GUICtrlSetCursor($btnOriginal_Restore, 0)
-
-GUISetOnEvent($GUI_EVENT_CLOSE, "SpecialEvents")
 ;#End of GUI creation
 
 ;//Tray stuff
@@ -250,14 +249,76 @@ TrayItemSetOnEvent(-1, "ExitS")
 ;//Initialize
 ToOriginal()
 _WinAPI_SetFocus(ControlGetHandle($hGUI, "", $lOriginal_Credit)) ;//Avoid init button focus workaround
-GUISetState(@SW_SHOWNOACTIVATE, $hGUI)
+GUISetState(@SW_SHOW)
 
 ;//Timer for Loading Animation
 DllCall("user32.dll", "int", "SetTimer", "hwnd", $hGUI, "int", 0, "int", $g_iAnimInterval, "int", 0)
 
 While 1
-	Sleep(2000)
+	_Interface()
 WEnd
+
+Func _Interface()
+	_Metro_HoverCheck_Loop($GUI_HOVER_REG, $hGUI);This hover check has to be added to the main While loop, otherwise the hover effects won't work.
+	$msg = GUIGetMsg()
+	Switch $msg
+		Case $GUI_EVENT_CLOSE, $GUI_CLOSE_BUTTON
+			_Metro_GUIDelete($GUI_HOVER_REG, $hGUI)
+			Exit
+		Case $GUI_MINIMIZE_BUTTON
+			GUISetState(@SW_MINIMIZE)
+		Case $cmBkUp2_OpenLocation
+			BkUp2_OpenFileLocation()
+		Case $cmBkUp2_AddBackupItem
+			BkUp2_AddFiles()
+		Case $cmBkUp2_AddBackupFolder
+			BkUp2_AddFolder()
+		Case $cmBkUp2_RemoveBackupItem
+			BkUp2_RemoveSelected()
+		Case $cmBkUp2_SelectAll
+			BkUp2_SelectAllCM()
+		Case $comboBkUp2_Profile
+			BkUp2_SelectList()
+		Case $btnRestore2_Browse
+			Restore2_Browse()
+		Case $btnOriginal_Backup
+			ToBkUp2()
+		Case $btnOriginal_Restore
+			Restore2()
+		Case $btnNext
+			Select
+				Case $sState = "B2"
+					ToBkUp3()
+				Case $sState = "B3"
+					ToBkUp4()
+				Case $sState = "B4"
+					ToBkUp5()
+				Case $sState = "R2"
+					Restore3()
+				Case $sState = "R3"
+					Restore4()
+				Case $sState = "R4"
+					Restore5()
+			EndSelect
+		Case $btnBack
+			Select
+				Case $sState = "B2"
+					ToOriginal()
+				Case $sState = "B3"
+					ToBkUp2()
+				Case $sState = "B4"
+					ToBkUp3()
+				Case $sState = "R2"
+					ToOriginal()
+				Case $sState = "R3"
+					Restore2()
+				Case $sState = "R4"
+					Restore3()
+			EndSelect
+		Case $cbBkUp3_ShowPwd
+			BkUp3_ShowPassword()
+	EndSwitch
+EndFunc	
 
 #Region Dealing with GUI elements (buttons, selection..)
 Func HideAllControls($bHideNextBtn = True)
@@ -296,10 +357,8 @@ Func ToOriginal()
 	GUICtrlSetState($lOriginal_Credit, $GUI_SHOW)
 	GUICtrlSetState($btnOriginal_Backup, $GUI_SHOW)
 	GUICtrlSetState($btnOriginal_Restore, $GUI_SHOW)
-	GUISetBkColor(0xffffff, $hGUI)
 	
-	GUICtrlSetOnEvent($btnOriginal_Backup, "ToBkUp2")
-	GUICtrlSetOnEvent($btnOriginal_Restore, "Restore2")
+	$sState = "Original"
 EndFunc   ;==>ToOriginal
 
 Func Restore2()
@@ -307,10 +366,8 @@ Func Restore2()
 	GUICtrlSetState($lRestore2_ArchiveDir, $GUI_SHOW)
 	GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_SHOW)
 	GUICtrlSetState($btnRestore2_Browse, $GUI_SHOW)
-	GUICtrlSetOnEvent($btnRestore2_Browse, "Restore2_Browse")
 	
-	GUICtrlSetOnEvent($btnNext, "Restore3")
-	GUICtrlSetOnEvent($btnBack, "ToOriginal")
+	$sState = "R2"
 EndFunc   ;==>Restore2
 
 Func Restore3()
@@ -322,10 +379,8 @@ Func Restore3()
 	HideAllControls(False)
 	GUICtrlSetState($lRestore3_Pwd, $GUI_SHOW)
 	GUICtrlSetState($ipRestore3_Pwd, $GUI_SHOW)
-	GUICtrlSetOnEvent($ipRestore3_Pwd, "Restore4")
 	
-	GUICtrlSetOnEvent($btnNext, "Restore4")
-	GUICtrlSetOnEvent($btnBack, "Restore2")
+	$sState = "R3"
 EndFunc   ;==>Restore3
 
 Func Restore4()
@@ -368,7 +423,6 @@ Func Restore4()
 				If FileExists("_temp.zip") Then ExitLoop
 				Sleep(200)
 			Next
-			
 			;//Extract data
 			GUICtrlSetData($lRestore4_Status, "Extracting compressed data..")
 			_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
@@ -389,20 +443,21 @@ Func Restore4()
 	;//Remaining GUI stuff
 	GUICtrlSetData($lRestore4_Status, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
-	$eReport = GUICtrlCreateEdit($sReport, 10, 10, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
+	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	GUICtrlSetState($btnNext, $GUI_ENABLE)
 	_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
 	GUICtrlSetState($cPic, $GUI_HIDE)
 	GUIRegisterMsg($WM_TIMER, "")
 	
-	GUICtrlSetOnEvent($btnNext, "Restore5")
+	$sState = "R4"
 EndFunc   ;==>Restore4
 
 Func Restore5()
 	GUICtrlDelete($eReport)
 	_GUICtrlButton_SetImage($btnNext, $g_sScriptDir & "\_Res\Next.bmp")
 	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then _WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\YourData")
+	$sState = "R5"
 	ToOriginal()
 EndFunc   ;==>Restore5
 
@@ -426,8 +481,7 @@ Func ToBkUp2()
 		_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
 	EndIf
 	
-	GUICtrlSetOnEvent($btnNext, "ToBkUp3")
-	GUICtrlSetOnEvent($btnBack, "ToOriginal")
+	$sState = "B2"
 EndFunc   ;==>ToBkUp2
 
 Func ToBkUp3()
@@ -501,8 +555,7 @@ Func ToBkUp3()
 	EndIf
 	GUICtrlSetState($cbBkUp3_ShowPwd, $GUI_SHOW)
 	
-	GUICtrlSetOnEvent($btnNext, "ToBkUp4")
-	GUICtrlSetOnEvent($btnBack, "ToBkUp2")
+	$sState = "B3"
 EndFunc   ;==>ToBkUp3
 
 Func _ConvertDefaultFolderPath($sFolder)
@@ -575,11 +628,12 @@ Func ToBkUp4()
 					$sReport &= $sFileToCompress & " compression failed. Error: " & @error & @CRLF
 				EndIf
 			Else
-				$sReport &= $sFileToCompress & " successfully compressed." & @CRLF
+				$sReport &= $sFileToCompress & "...Done!" & @CRLF
 			EndIf
 		Next ;// Finished adding items to zip
 		AdlibUnRegister("HideCompressing")
 		$sReport &= "Encrypting data.." & @CRLF
+		GUICtrlSetData($lBkUp4_CurrentFile, "")
 		GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
 		$sContainerName = $sCurProfile
 		If FileExists($sContainerName) Then
@@ -600,6 +654,7 @@ Func ToBkUp4()
 		EndIf
 	Else ;//No compression, only encrypt files/folders
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1
+			_Interface()
 			$sFileToEncrypt = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
 			GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
 			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToEncrypt)
@@ -621,14 +676,14 @@ Func ToBkUp4()
 	GUICtrlSetData($lBkUp4_CurrentFile, "")
 	GUICtrlSetData($lBkUp4_Status, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
-	$eReport = GUICtrlCreateEdit($sReport, 10, 10, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY))
+	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY))
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
-	_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
+	;_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
 	GUICtrlSetState($cPic, $GUI_HIDE)
 	GUIRegisterMsg($WM_TIMER, "")
 	GUICtrlSetState($btnNext, $GUI_ENABLE)
 
-	GUICtrlSetOnEvent($btnNext, "ToBkUp5")
+	$sState = "B4"
 EndFunc   ;==>ToBkUp4
 
 Func ToBkUp5()
@@ -644,7 +699,8 @@ Func ToBkUp5()
 		Else
 			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\EncryptedData")
 		EndIf
-	EndIf	
+	EndIf
+	$sState = "B5"
 	ToOriginal()
 EndFunc   ;==>ToBkUp5
 
@@ -762,20 +818,6 @@ Func Restore2_Browse()
 	GUICtrlSetData($ipRestore2_ArchiveDir, $sTemp)
 EndFunc   ;==>Restore2_Browse
 
-Func _DerivePwd($sPwdToDerive);//Make user pwd longer
-	Local $sResult
-	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2)
-	$sResult &= StringReverse($sResult)
-	Return $sResult
-EndFunc   ;==>_DerivePwd
-
-Func SpecialEvents();//Handling default GUI events
-	Select
-		Case @GUI_CtrlId = $GUI_EVENT_CLOSE
-			ExitS()
-	EndSelect
-EndFunc   ;==>SpecialEvents
-
 Func _DefaultFoldersStates_Save()
 	Local $sTemp
 	For $i = 0 To $g_nDefaultFoldersCount - 1
@@ -827,11 +869,7 @@ EndFunc   ;==>_AddFilesToLV
 
 Func _AddDefaultFoldersToLV($hWnd)
 	#cs
-		Current default folders: MyDocuments,Pictures,Music,Videos
-		//TODO: Add bookmarks & history from mainstream browsers
-		Default Browser regkey: HKEY_CURRENT_USER\Software\Clients\StartMenuInternet, HKEY_CURRENT_USER\Software\Clients\Google\Chrome for GChrome
-		+ Chromium & Chrome have the same backup dir (%APPDATA%\Local\*Google\Chrome|Chromium*\User Data\Default)
-		+ Firefox: %APPDATA%\Mozilla\Firefox\Profiles\
+		//NOTE: Current default folders: MyDocuments,Pictures,Music,Videos, data from mainstream browsers
 	#ce
 	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then
 		;//Back up Chrome data
@@ -914,8 +952,9 @@ Func _PurgeRecentsCM()
 		TrayTip($g_sProgramName, "Shredding files, this may take a while..", 4, 1)
 		_PurgeDir(@AppDataDir & "\Microsoft\Windows\Recent")
 		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\INetCache\IE") ;Win10
-		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\Temporary Internet Files\Low\Content.IE5") ;Win7-8
+		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\Temporary Internet Files") ;Win7-8
 		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\History")
+		Run("RunDll32.exe InetCpl.cpl,ClearMyTracksByProcess 255")
 		_PurgeDir(@UserProfileDir & "\AppData\Media Cache")
 		_PurgeRegCM()
 	EndIf
@@ -1056,6 +1095,20 @@ Func HideCompressing();Hide pop-up compressing window when archiving w/ ZIP
 	EndIf
 EndFunc   ;==>HideCompressing
 
+Func _DerivePwd($sPwdToDerive);//Make user pwd longer
+	Local $sResult
+	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2)
+	$sResult &= StringReverse($sResult)
+	Return $sResult
+EndFunc   ;==>_DerivePwd
+
+Func SpecialEvents();//Handling default GUI events
+	Select
+		Case @GUI_CtrlId = $GUI_EVENT_CLOSE
+			ExitS()
+	EndSelect
+EndFunc   ;==>SpecialEvents
+
 Func ExitS()
 	If FileExists($g_sScriptDir & "\_temp.zip") Then _FileShred($g_sScriptDir & "\_temp.zip");Clean up
 	_Crypt_Shutdown()
@@ -1147,7 +1200,7 @@ Func _FileWriteAccessible($sFile)
 EndFunc   ;==>_FileWriteAccessible
 
 Func _Crypt_EncryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgID)
-	;//Recursively encrypts everything in a folder.
+	;//Recursively encrypt everything in a folder.
 	Local $sDestFile
 	If Not FileExists($_sDestinationFolder) Then DirCreate($_sDestinationFolder)
 	$aFiles = _FileListToArray($_sSourceFolder, '*', 1);List all files in dir
