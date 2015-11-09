@@ -1,4 +1,3 @@
-#cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
 	Copyright (C) 2015 T.H.
@@ -49,8 +48,10 @@
 	- [Other]Purge all history located in "AppDataLocal\Microsoft\Windows", "\AppData\Local\Microsoft\Windows\InetCache", "AppData\Media Cache" - WinClear
 	//v1.5.3
 	- [GUI]Metro GUI overhaul
+	//v1.6.0
+	- [List]User can now selectively backup browser history/bookmarks instead of processing everything
+	- [List]Better file/folder size display
 	TODO: (high to low priority)
-	- Possibly a way to selectively backup browser data instead of saving everything (ignore caches and flashplayer data)
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
 	- Generate html file to assist the restoration process
@@ -77,8 +78,8 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.5.0.0)
-#pragma compile(FileVersion, 1.5.0.0)
+#pragma compile(ProductVersion, 1.6.0)
+#pragma compile(FileVersion, 1.6.0)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -118,10 +119,10 @@ Global Const $STM_SETIMAGE = 0x0172
 
 ;//Global vars declaration
 
-;$g_aDefaultFolders: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
-Global $g_aDefaultFolders[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
-Global $g_nDefaultFoldersCount = UBound($g_aDefaultFolders); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.5.0.0"
+;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
+Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
+Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
+Global $g_sProgramVersion = "1.6.0"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 40, $g_aProfiles[0], $sCurProfile, $sState
 
 ;//GUI elements declaration
@@ -407,7 +408,7 @@ Func Restore4()
 	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
 	;//Decrypt
 	$aGUIPos = WinGetPos($hGUI)
-	$lRestore4_Status = GUICtrlCreateLabel("Decrypting container..", ($aGUIPos[2] / 2) - 145, $aGUIPos[3] - 213, 280, 30, BitOR(0x0200, 0x01))
+	$lRestore4_Status = GUICtrlCreateLabel("Decrypting container..", ($aGUIPos[2] / 2) - 145, $aGUIPos[3] - 233, 280, 30, BitOR(0x0200, 0x01))
 	GUICtrlSetFont($lRestore4_Status, 11, 550, Default, "Segoe UI")
 	GUICtrlSetResizing($lRestore4_Status, 8 + 32 + 128 + 768)
 	$sReport &= "Decrypting container.." & @CRLF
@@ -523,8 +524,8 @@ Func ToBkUp3()
 		$sTemp &= $aAllItems[$i] & "|"
 	Next
 	;//Remove default folders from list file
-	For $i = 0 To UBound($g_aDefaultFolders) - 1
-		$sRegExPattern &= $g_aDefaultFolders[$i][0] & "|"
+	For $i = 0 To UBound($g_aDefaultItems) - 1
+		$sRegExPattern &= $g_aDefaultItems[$i][0] & "|"
 	Next
 	$sRegExPattern = StringTrimRight($sRegExPattern, 1); Remove last "|" delimiter so "|" symbols don't get erased during regex replace
 	$sTemp = StringRegExpReplace($sTemp, "\x7C?(" & $sRegExPattern & ")\x7C", "")
@@ -561,8 +562,8 @@ EndFunc   ;==>ToBkUp3
 Func _ConvertDefaultFolderPath($sFolder)
 	;//Replace default folders like "Documents" with actual dir path like C:\Users\Sam\Documents, which is stored in [$i][1]
 	For $i = 0 To $g_nDefaultFoldersCount - 1
-		If $sFolder = $g_aDefaultFolders[$i][0] Then
-			$sFolder = $g_aDefaultFolders[$i][1]
+		If $sFolder = $g_aDefaultItems[$i][0] Then
+			$sFolder = $g_aDefaultItems[$i][1]
 			ExitLoop
 		EndIf
 	Next
@@ -751,7 +752,7 @@ Func BkUp2_AddFolder()
 	$sFolderOpened = FileSelectFolder("Select a folder to backup", @DesktopDir)
 	If $sFolderOpened Then
 		$nIndex = _GUICtrlListView_AddItem($lvBkUp2_BackupList, $sFolderOpened, 1)
-		_GUICtrlListView_AddSubItem($lvBkUp2_BackupList, $nIndex, Round(DirGetSize($sFolderOpened) / 1024 / 1024, 1) & "MB", $nSizeColumn)
+		_GUICtrlListView_AddSubItem($lvBkUp2_BackupList, $nIndex, _GetItemSizeString($sFolderOpened), $nSizeColumn)
 		_GUICtrlListView_SetItemChecked($lvBkUp2_BackupList, $nIndex, True)
 	EndIf
 EndFunc   ;==>BkUp2_AddFolder
@@ -854,12 +855,11 @@ Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False);//$bFromFilet:set ite
 			EndIf
 			If FileGetAttrib($sCurFile) = "D" Then
 				$nIndex = _GUICtrlListView_AddItem($hWnd, $sCurFile, 1)
-				_GUICtrlListView_AddSubItem($hWnd, $nIndex, Round(DirGetSize($sCurFile) / 1024 / 1024, 1) & "MB", $nSizeColumn)
+				_GUICtrlListView_AddSubItem($hWnd, $nIndex, _GetItemSizeString($sCurFile), $nSizeColumn)
 			Else
 				$sFile = StringReplace($sCurFile, "\\", "\")
 				$nIndex = _GUICtrlListView_AddItem($hWnd, $sFile)
-				$sFileSize = Round(FileGetSize($sFile) / 1024 / 1024, 1) & "MB"
-				If $sFileSize = 0 Then $sFileSize = Round(FileGetSize($sFile) / 1024, 1) & "KB"
+				$sFileSize = _GetItemSizeString($sFile)
 				_GUICtrlListView_AddSubItem($hWnd, $nIndex, $sFileSize, $nSizeColumn)
 			EndIf
 			_GUICtrlListView_SetItemChecked($hWnd, $nIndex, $bCheckState)
@@ -873,30 +873,56 @@ Func _AddDefaultFoldersToLV($hWnd)
 	#ce
 	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then
 		;//Back up Chrome data
-		If _ArraySearch($g_aDefaultFolders, "Chrome Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Chrome Data|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\History|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Bookmarks|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Bookmarks|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Login Data|\_Res\Chrome.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then
 		;//Back up Chromium data
-		If _ArraySearch($g_aDefaultFolders, "Chromium Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Chromium Data|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default|\_Res\Chromium.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chromium History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\History|\_Res\Chromium.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chromium Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium Bookmarks|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Bookmarks|\_Res\Chromium.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chromium Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium Passwords|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Login Data|\_Res\Chromium.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Mozilla\Firefox\Profiles") Then
 		;//Back up Firefox data
-		If _ArraySearch($g_aDefaultFolders, "Firefox Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
+		If _ArraySearch($g_aDefaultItems, "Firefox Data") = -1 Then _ArrayAdd($g_aDefaultItems, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable") Then
 		;//Back up Opera data
-		If _ArraySearch($g_aDefaultFolders, "Opera Data") = -1 Then _ArrayAdd($g_aDefaultFolders, "Opera Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
+		If _ArraySearch($g_aDefaultItems, "Opera Data") = -1 Then _ArrayAdd($g_aDefaultItems, "Opera Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
 	EndIf
 	_GUICtrlListView_BeginUpdate($hWnd)
-	For $i = 0 To UBound($g_aDefaultFolders) - 1
-		_GUIImageList_AddBitmap($hImage, $g_sScriptDir & $g_aDefaultFolders[$i][2])
-		_GUICtrlListView_AddItem($hWnd, $g_aDefaultFolders[$i][0], $i + 2)
-		_GUICtrlListView_AddSubItem($hWnd, $i, Round(DirGetSize($g_aDefaultFolders[$i][1]) / 1024 / 1024, 1) & "MB", $nSizeColumn)
+	For $i = 0 To UBound($g_aDefaultItems) - 1
+		_GUIImageList_AddBitmap($hImage, $g_sScriptDir & $g_aDefaultItems[$i][2])
+		_GUICtrlListView_AddItem($hWnd, $g_aDefaultItems[$i][0], $i + 2)
+		If StringInStr(FileGetAttrib($g_aDefaultItems[$i][1]), "D") Then
+			$nItemSize = _GetItemSizeString($g_aDefaultItems[$i][1])
+		Else
+			$nItemSize = _GetItemSizeString($g_aDefaultItems[$i][1])
+		EndIf
+		_GUICtrlListView_AddSubItem($hWnd, $i, $nItemSize, $nSizeColumn)
 	Next
 	_GUICtrlListView_SetImageList($hWnd, $hImage, 1)
 	_GUICtrlListView_EndUpdate($hWnd)
-	$g_nDefaultFoldersCount = UBound($g_aDefaultFolders)
+	$g_nDefaultFoldersCount = UBound($g_aDefaultItems)
 EndFunc   ;==>_AddDefaultFoldersToLV
+
+Func _GetItemSizeString($sItemPath)
+	Local $nItemSize
+	;//Return something like "500Kb" or "23Mb"
+	If Not FileExists($sItemPath) Then Return "N/A"
+	If StringInStr(FileGetAttrib($sItemPath), "D") Then;//Item is a directory
+		$nRawItemSize = DirGetSize($sItemPath)		
+	Else;//Item is a file
+		$nRawItemSize = FileGetSize($sItemPath)
+	EndIf
+	If $nRawItemSize / 1024 / 1024 < 1 Then;//Under 1Mb -> Return Kb
+		$nItemSize = Round($nRawItemSize / 1024, 1) & "KB"
+	Else
+		$nItemSize = Round($nRawItemSize / 1024 / 1024, 1) & "MB"
+	EndIf
+	Return $nItemSize
+EndFunc	
 
 Func _AddShredderCM()
 	If IsAdmin() Then
@@ -904,7 +930,7 @@ Func _AddShredderCM()
 		RegWrite("HKCR\*\shell\Shred\", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
 		RegWrite("HKCR\Directory\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
 		RegWrite("HKCR\Directory\shell\Shred", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
-		MsgBox(64, $g_sProgramName, "Right-click [Shred] context menu has been added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
+		_Metro_MsgBox($g_sProgramName, "Right-click [Shred] context menu has been added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
 	Else
 		ShellExecute(@AutoItExe, "/add", "", "runas")
 		;MsgBox(16, $g_sProgramName, "Administrative privileges required.")
@@ -912,7 +938,7 @@ Func _AddShredderCM()
 EndFunc   ;==>_AddShredderCM
 
 Func _AboutCM()
-	MsgBox(64, $g_sProgramName & " " & $g_sProgramVersion, "Gather your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
+	_Metro_MsgBox($g_sProgramName & " " & $g_sProgramVersion, "Gather your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
 			 & "Copyright(C) 2015 T.H. evorlet@wmail.io" & @CRLF _
 			 & "This software is open source and registered under GNU GPL." & @CRLF _
 			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
@@ -974,7 +1000,7 @@ Func _PurgeRecentsCM()
 			$sLogPurged = " except Event Logs (requires Admin)"
 		EndIf
 	EndIf
-	MsgBox(64, $g_sProgramName, "Everything has been securely erased" & $sLogPurged & ". Please note that you might have still left traces within your registry.")
+	MsgBox(64, $g_sProgramName, "Everything has been securely erased" & $sLogPurged & ". Please note that you might have left traces within your registry still.")
 EndFunc   ;==>_PurgeRecentsCM
 
 #Region Everything FileShredder
