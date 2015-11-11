@@ -1,3 +1,4 @@
+#cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
 	Copyright (C) 2015 T.H.
@@ -51,6 +52,9 @@
 	//v1.6.0
 	- [List]User can now selectively backup browser history/bookmarks instead of processing everything
 	- [List]Better file/folder size display
+	//v1.6.2
+	- [GUI]Improved various aesthetics, brought back drag 'n drop for metro GUI
+	- [List]Corrected Google Chrome data path
 	TODO: (high to low priority)
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
@@ -78,13 +82,13 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.6.0)
-#pragma compile(FileVersion, 1.6.0)
+#pragma compile(ProductVersion, 1.6.2)
+#pragma compile(FileVersion, 1.6.2)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
-
+_SetTheme("WhiteBlue")
 Global $g_sProgramName = "Ev-Secure Backup", $g_sScriptDir = @ScriptDir
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 
@@ -122,8 +126,8 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.6.0"
-Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 40, $g_aProfiles[0], $sCurProfile, $sState
+Global $g_sProgramVersion = "1.6.2"
+Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
@@ -134,7 +138,6 @@ Global $aGUIPos[] = [0,0,400,500]
 ;//GUI creation
 
 ;$hGUI = GUICreate($g_sProgramName, 400, 500, -1, 100, BitOR($WS_MINIMIZEBOX, $WS_SIZEBOX), $WS_EX_ACCEPTFILES)
-_SetTheme("WhiteBlue")
 $hGUIx =_Metro_CreateGUI($g_sProgramName, 403, 500, -1, 100, True, True)
 $GUI_HOVER_REG = $hGUIx[1]
 $hGUI = $hGUIx[0]
@@ -193,12 +196,12 @@ GUICtrlSetResizing($comboBkUp2_Profile, 768 + 64 + 8);HCentered
 $lBkUp3_Pwd = GUICtrlCreateLabel("Pick your Password:", 40, 130, 200)
 
 $bShowPwd = IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", $GUI_UNCHECKED)
-$ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 150, $aGUIPos[2] - 100, 18)
+$ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 150, $aGUIPos[2] - 90, 18)
 If $bShowPwd = $GUI_UNCHECKED Then GUICtrlSetStyle($ipBkUp3_Pwd, 0x0020)
 $lBkUp3_PwdConfirm = GUICtrlCreateLabel("Repeat your Password:", 40, 180, 200)
-$ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 100, 18, 0x0020)
+$ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 90, 18, 0x0020)
 $cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 230, 130)
-$hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 47)
+$hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 50)
 $cbBkUp3_Compress = GUICtrlCreateCheckbox("Compress data", 45, 298, 130)
 
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
@@ -209,14 +212,14 @@ $cbBkUp4_ShowEncryptedFile = GUICtrlCreateCheckbox("Show result file", 160, $aGU
 GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_CHECKED)
 
 ;//Create stage-2 Restore GUI elements(first in Restore)
-$lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder.", 40, $aGUIPos[3] - 333, 300)
+$lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder. Drag 'n Drop accepted.", 40, $aGUIPos[3] - 333, 300)
 $ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 314, $aGUIPos[2] - 125, 20)
 GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_DROPACCEPTED)
 $btnRestore2_Browse = _Metro_CreateButtonEx($GUI_HOVER_REG, "...", $aGUIPos[2] - 82, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 
 ;//Create stage-3 Restore GUI elements
 $lRestore3_Pwd = GUICtrlCreateLabel("Enter the Password used during backup process", 40, $aGUIPos[3] - 333)
-$ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 103, 18)
+$ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 93, 18, -1, $WS_EX_ACCEPTFILES)
 
 ;//Icons for BkUp2_ListView
 $hImage = _GUIImageList_Create(16, 16)
@@ -249,7 +252,6 @@ TrayItemSetOnEvent(-1, "ExitS")
 
 ;//Initialize
 ToOriginal()
-_WinAPI_SetFocus(ControlGetHandle($hGUI, "", $lOriginal_Credit)) ;//Avoid init button focus workaround
 GUISetState(@SW_SHOW)
 
 ;//Timer for Loading Animation
@@ -374,12 +376,13 @@ EndFunc   ;==>Restore2
 Func Restore3()
 	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
 	If Not StringRegExp($sContainerPath, "^(.*\\)(.*)") Then
-		MsgBox(64, $g_sProgramName, "Please select a container file/folder to restore from.")
+		_Metro_MsgBox($g_sProgramName, "Please select a container file/folder to restore from.")
 		Return
 	EndIf
 	HideAllControls(False)
 	GUICtrlSetState($lRestore3_Pwd, $GUI_SHOW)
 	GUICtrlSetState($ipRestore3_Pwd, $GUI_SHOW)
+	ControlFocus($hGUI, "", $ipRestore3_Pwd)
 	
 	$sState = "R3"
 EndFunc   ;==>Restore3
@@ -388,7 +391,7 @@ Func Restore4()
 	;//Main step in restoration, retrieve files from encrypted container
 	Local $sReport
 	If Not GUICtrlRead($ipRestore3_Pwd) Then
-		MsgBox(64, $g_sProgramName, "Please enter a Password.")
+		_Metro_MsgBox($g_sProgramName, "Please enter a Password.")
 		Return
 	EndIf
 	
@@ -408,7 +411,7 @@ Func Restore4()
 	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
 	;//Decrypt
 	$aGUIPos = WinGetPos($hGUI)
-	$lRestore4_Status = GUICtrlCreateLabel("Decrypting container..", ($aGUIPos[2] / 2) - 145, $aGUIPos[3] - 233, 280, 30, BitOR(0x0200, 0x01))
+	$lRestore4_Status = GUICtrlCreateLabel("Decrypting container..", ($aGUIPos[2] / 2) - 120, $aGUIPos[3] - 233, 280, 30, BitOR(0x0200, 0x01))
 	GUICtrlSetFont($lRestore4_Status, 11, 550, Default, "Segoe UI")
 	GUICtrlSetResizing($lRestore4_Status, 8 + 32 + 128 + 768)
 	$sReport &= "Decrypting container.." & @CRLF
@@ -417,6 +420,7 @@ Func Restore4()
 		_Crypt_DecryptFolder($sContainerPath, $g_sScriptDir & "\YourData", $hKey, $CALG_USERKEY)
 	Else
 		If FileExists("_temp.zip") Then _FileShred($sTempZip)
+		$g_LoadingText = "Decrypting"
 		_Crypt_DecryptFile(StringReplace(GUICtrlRead($ipRestore2_ArchiveDir), "\\", "\"), $g_sScriptDir & "\_temp.zip", $hKey, $CALG_USERKEY)
 		$iError = @error		
 		If Not $iError Then
@@ -426,6 +430,7 @@ Func Restore4()
 			Next
 			;//Extract data
 			GUICtrlSetData($lRestore4_Status, "Extracting compressed data..")
+			$g_LoadingText = "Extracting"
 			_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
 			If $iError Then
 				$sReport &= "Error extracting archive. Code: " & $iError & @CRLF
@@ -476,7 +481,7 @@ Func ToBkUp2()
 		$aBkUpList = StringSplit($sTemp, "|", 2)
 		_AddFilesToLV($lvBkUp2_BackupList, $aBkUpList, True)
 		;If Not $aBkUpList Then BkUp2_SelectAll($lvBkUp2_BackupList);*Is new list
-		_DefaultFoldersStates_Load()
+		_DefaultItemStates_Load()
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, 0, $aGUIPos[2] - 105)
 		_GUICtrlListView_SetColumnWidth($lvBkUp2_BackupList, $nSizeColumn, 70)
 		_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
@@ -489,7 +494,7 @@ Func ToBkUp3()
 	Local $a, $sTemp, $aAccelKeys, $aAllItems[0], $sRegExPattern
 	$sCurProfile = GUICtrlRead($comboBkUp2_Profile)
 	If Not $sCurProfile Then
-		MsgBox(16, $g_sProgramName, "List name must not be empty")
+		_Metro_MsgBox($g_sProgramName, "List name must not be empty!")
 		ControlFocus($hGUI, "", $comboBkUp2_Profile)
 		Return
 	EndIf
@@ -514,7 +519,7 @@ Func ToBkUp3()
 	; $aAllItems: all items - for list saving|$g_aToBackupItems: checked items only
 	
 	If UBound($g_aToBackupItems) = 0 Then; No item checked
-		MsgBox(64, $g_sProgramName, "No files were selected for backup.")
+		_Metro_MsgBox($g_sProgramName, "No files were selected for backup.")
 		Return
 	EndIf
 	
@@ -540,7 +545,7 @@ Func ToBkUp3()
 	FileClose($hBkUpList)
 	
 	;//Remember default folders' states
-	_DefaultFoldersStates_Save()
+	_DefaultItemStates_Save()
 	#EndRegion
 	
 	;//GUI stuff
@@ -575,11 +580,11 @@ Func ToBkUp4()
 	Local $sReport, $nIndex
 	$sPwd = GUICtrlRead($ipBkUp3_Pwd)
 	If Not $sPwd Then
-		MsgBox(64, $g_sProgramName, "Please enter a Password.")
+		_Metro_MsgBox($g_sProgramName, "Please enter a Password.")
 		Return
 	EndIf
 	If GUICtrlRead($cbBkUp3_ShowPwd) = $GUI_UNCHECKED And GUICtrlRead($ipBkUp3_Pwd) <> GUICtrlRead($ipBkUp3_PwdConfirm) Then
-		MsgBox(64, $g_sProgramName, "Passwords didn't match.")
+		_Metro_MsgBox($g_sProgramName, "Passwords didn't match.")
 		Return
 	EndIf
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", GUICtrlRead($cbBkUp3_ShowPwd))
@@ -594,6 +599,7 @@ Func ToBkUp4()
 	$lBkUp4_Status = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 120, $aCtrlPos[0], 24, BitOR(0x0200, 0x01))
 	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 95, $aCtrlPos[0], 20, BitOR(0x0200, 0x01))
 	If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then;Use Zip encryption
+		$g_LoadingText = "Compressing"
 		$sReport &= "Compressing your data.." & @CRLF
 		$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
 		GUICtrlSetData($lBkUp4_Status, "Compressing your data..")
@@ -636,6 +642,7 @@ Func ToBkUp4()
 		$sReport &= "Encrypting data.." & @CRLF
 		GUICtrlSetData($lBkUp4_CurrentFile, "")
 		GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
+		$g_LoadingText = "Encrypting"
 		$sContainerName = $sCurProfile
 		If FileExists($sContainerName) Then
 			$sReport &= "Container " & $sContainerName & " already exists, overwriting.." & @CRLF
@@ -815,11 +822,11 @@ Func Restore2_Browse()
 	$sTemp = FileOpenDialog("Select encrypted container file", $g_sScriptDir, "All files (*.*)")
 	If Not $sTemp Then
 		If MsgBox(4, $g_sProgramName, "No container file was selected, select a container folder instead?") = 6 Then $sTemp = FileSelectFolder("Select encrypted container folder", $g_sScriptDir)
-	EndIf	
+	EndIf
 	GUICtrlSetData($ipRestore2_ArchiveDir, $sTemp)
 EndFunc   ;==>Restore2_Browse
 
-Func _DefaultFoldersStates_Save()
+Func _DefaultItemStates_Save()
 	Local $sTemp
 	For $i = 0 To $g_nDefaultFoldersCount - 1
 		If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $i) = True Then
@@ -827,9 +834,9 @@ Func _DefaultFoldersStates_Save()
 		EndIf
 	Next
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "DEFAULT_FOLDERS_STATES", $sTemp)
-EndFunc   ;==>_DefaultFoldersStates_Save
+EndFunc   ;==>_DefaultItemStates_Save
 
-Func _DefaultFoldersStates_Load()
+Func _DefaultItemStates_Load()
 	$sTemp = IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "DEFAULT_FOLDERS_STATES", "")
 	If $sTemp Then
 		$aTemp = StringSplit($sTemp, ",", 2)
@@ -837,7 +844,7 @@ Func _DefaultFoldersStates_Load()
 			If $aTemp[$i] Then _GUICtrlListView_SetItemChecked($lvBkUp2_BackupList, $aTemp[$i])
 		Next
 	EndIf
-EndFunc   ;==>_DefaultFoldersStates_Load
+EndFunc   ;==>_DefaultItemStates_Load
 
 Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False);//$bFromFilet:set item's state & remove "::chkd" string if used in BkUp2()
 	Local $sCurFile, $bCheckState = True
@@ -873,9 +880,9 @@ Func _AddDefaultFoldersToLV($hWnd)
 	#ce
 	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then
 		;//Back up Chrome data
-		If _ArraySearch($g_aDefaultItems, "Chrome History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\History|\_Res\Chrome.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chrome Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Bookmarks|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Bookmarks|\_Res\Chrome.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Login Data|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\History|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Bookmarks|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Bookmarks|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Login Data|\_Res\Chrome.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then
 		;//Back up Chromium data
@@ -933,7 +940,6 @@ Func _AddShredderCM()
 		_Metro_MsgBox($g_sProgramName, "Right-click [Shred] context menu has been added to Windows. Files deleted with [Shred] option leave no trace and can't be recovered.")
 	Else
 		ShellExecute(@AutoItExe, "/add", "", "runas")
-		;MsgBox(16, $g_sProgramName, "Administrative privileges required.")
 	EndIf
 EndFunc   ;==>_AddShredderCM
 
@@ -1143,57 +1149,100 @@ EndFunc   ;==>ExitS
 
 ;;//Loading animation, thanks to UEZ & original creators
 Func PlayAnim()
-	$hHBmp_BG = _GDIPlus_SpinningAndGlowing($iPerc, 300, 300)
+	$hHBmp_BG = _GDIPlus_MultiColorLoader(300, 300, $g_LoadingText)
 	$hB = GUICtrlSendMsg($cPic, $STM_SETIMAGE, $IMAGE_BITMAP, $hHBmp_BG)
 	If $hB Then _WinAPI_DeleteObject($hB)
 	_WinAPI_DeleteObject($hHBmp_BG)
-	$iPerc += 4
 EndFunc   ;==>PlayAnim
-Func _GDIPlus_SpinningAndGlowing($fProgress, $iW, $iH, $iColor = 0x00A2E8, $fSize = 80, $iCnt = 24, $fDM = 24, $fScale = 3, $iGlowCnt = 6)
-	Local $hBmp = _GDIPlus_BitmapCreateFromScan0($iW, $iH)
-	Local $hGfx = _GDIPlus_ImageGetGraphicsContext($hBmp)
-	_GDIPlus_GraphicsSetSmoothingMode($hGfx, 2)
+
+
+Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana", $bHBitmap = True)
+	Local Const $hBitmap = _GDIPlus_BitmapCreateFromScan0($iW, $iH)
+	Local Const $hGfx = _GDIPlus_ImageGetGraphicsContext($hBitmap)
+	_GDIPlus_GraphicsSetSmoothingMode($hGfx, 4 + (@OSBuild > 5999))
+	_GDIPlus_GraphicsSetTextRenderingHint($hGfx, 3)
+	_GDIPlus_GraphicsSetPixelOffsetMode($hGfx, $GDIP_PIXELOFFSETMODE_HIGHQUALITY)
 	_GDIPlus_GraphicsClear($hGfx, 0xFFFFFFFF)
-	Local $iOff = $iCnt * Mod($fProgress, 100) / 100
-	Local $fCX = $iW * 0.5
-	Local $fCY = $iH * 0.5
-	Local $hPath = _GDIPlus_PathCreate()
-	_GDIPlus_PathAddEllipse($hPath, -$fDM * 0.5, -$fDM * 0.5, $fDM, $fDM)
+
+	Local $iRadius = ($iW > $iH) ? $iH * 0.6 : $iW * 0.6
+
+	Local Const $hPath = _GDIPlus_PathCreate()
+	_GDIPlus_PathAddEllipse($hPath, ($iW - ($iRadius + 24)) / 2, ($iH - ($iRadius + 24)) / 2, $iRadius + 24, $iRadius + 24)
+
 	Local $hBrush = _GDIPlus_PathBrushCreateFromPath($hPath)
-	_GDIPlus_PathBrushSetCenterColor($hBrush, $iColor)
-	_GDIPlus_PathBrushSetSurroundColor($hBrush, 0)
+	_GDIPlus_PathBrushSetCenterColor($hBrush, 0xFFFFFFFF)
+	_GDIPlus_PathBrushSetSurroundColor($hBrush, 0x08101010)
 	_GDIPlus_PathBrushSetGammaCorrection($hBrush, True)
-	Local $aBlend[5][2] = [[4]]
-	$aBlend[1][0] = 0
-	$aBlend[1][1] = 0
-	$aBlend[2][0] = BitOR(BitAND($iColor, 0x00FFFFFF), 0x1A000000)
-	$aBlend[2][1] = 0.78
-	$aBlend[3][0] = BitOR(BitAND($iColor, 0x00FFFFFF), 0xFF000000)
-	$aBlend[3][1] = 0.88
-	$aBlend[4][0] = 0xFFFFFFFF
-	$aBlend[4][1] = 1
-	_GDIPlus_PathBrushSetPresetBlend($hBrush, $aBlend)
-	Local $fS
-	Local Const $cPI = ATan(1) * 4
-	For $i = 0 To $iCnt - 1
-		$fS = Sin($cPI * Log(1.4 + Mod($iOff + $i, $iCnt) / $iGlowCnt) / Log(4))
-		If $fS < 0 Then $fS = 0
-		$fS = 1 + $fScale * $fS
-		_GDIPlus_GraphicsResetTransform($hGfx)
-		_GDIPlus_GraphicsScaleTransform($hGfx, $fS, $fS, True)
-		_GDIPlus_GraphicsTranslateTransform($hGfx, -$fSize, 0, True)
-		_GDIPlus_GraphicsScaleTransform($hGfx, 1.2, 1, False)
-		_GDIPlus_GraphicsRotateTransform($hGfx, -360 / $iCnt * $i, True)
-		_GDIPlus_GraphicsTranslateTransform($hGfx, $fCX, $fCY, True)
-		_GDIPlus_GraphicsFillPath($hGfx, $hPath, $hBrush)
-	Next
-	_GDIPlus_BrushDispose($hBrush)
+
+	Local $aBlend[4][2] = [[3]]
+	$aBlend[1][0] = 0 ;0% center color
+	$aBlend[1][1] = 0 ;position = boundary
+	$aBlend[2][0] = 0.33 ;70% center color
+	$aBlend[2][1] = 0.1 ;10% of distance boundary->center point
+	$aBlend[3][0] = 1 ;100% center color
+	$aBlend[3][1] = 1 ;center point
+	_GDIPlus_PathBrushSetBlend($hBrush, $aBlend)
+
+	Local $aRect = _GDIPlus_PathBrushGetRect($hBrush)
+	_GDIPlus_GraphicsFillRect($hGfx, $aRect[0], $aRect[1], $aRect[2], $aRect[3], $hBrush)
+
 	_GDIPlus_PathDispose($hPath)
-	Local $hHBITMAP = _GDIPlus_BitmapCreateHBITMAPFromBitmap($hBmp)
+	_GDIPlus_BrushDispose($hBrush)
+
+	Local Const $hBrush_Black = _GDIPlus_BrushCreateSolid(0xFFFFFFFF)
+	_GDIPlus_GraphicsFillEllipse($hGfx, ($iW - ($iRadius + 10)) / 2, ($iH - ($iRadius + 10)) / 2, $iRadius + 10, $iRadius + 10, $hBrush_Black)
+
+	Local Const $hBitmap_Gradient = _GDIPlus_BitmapCreateFromScan0($iRadius, $iRadius)
+	Local Const $hGfx_Gradient = _GDIPlus_ImageGetGraphicsContext($hBitmap_Gradient)
+	_GDIPlus_GraphicsSetSmoothingMode($hGfx_Gradient, 4 + (@OSBuild > 5999))
+	Local Const $hMatrix = _GDIPlus_MatrixCreate()
+	Local Static $r = 0
+	_GDIPlus_MatrixTranslate($hMatrix, $iRadius / 2, $iRadius / 2)
+	_GDIPlus_MatrixRotate($hMatrix, $r)
+	_GDIPlus_MatrixTranslate($hMatrix, -$iRadius / 2, -$iRadius / 2)
+	_GDIPlus_GraphicsSetTransform($hGfx_Gradient, $hMatrix)
+	$r += 10
+	Local Const $hBrush_Gradient = _GDIPlus_LineBrushCreate($iRadius, $iRadius / 2, $iRadius, $iRadius, 0xFF000000, 0xFF33CAFD, 1)
+	_GDIPlus_LineBrushSetGammaCorrection($hBrush_Gradient)
+	_GDIPlus_GraphicsFillEllipse($hGfx_Gradient, 0, 0, $iRadius, $iRadius, $hBrush_Gradient)
+	_GDIPlus_GraphicsFillEllipse($hGfx_Gradient, 4, 4, $iRadius - 8, $iRadius - 8, $hBrush_Black)
+	_GDIPlus_GraphicsDrawImageRect($hGfx, $hBitmap_Gradient, ($iW - $iRadius) / 2, ($iH - $iRadius) / 2, $iRadius, $iRadius)
+	_GDIPlus_BrushDispose($hBrush_Gradient)
+	_GDIPlus_BrushDispose($hBrush_Black)
+	_GDIPlus_GraphicsDispose($hGfx_Gradient)
+	_GDIPlus_BitmapDispose($hBitmap_Gradient)
+	_GDIPlus_MatrixDispose($hMatrix)
+
+	Local Const $hFormat = _GDIPlus_StringFormatCreate()
+    Local Const $hFamily = _GDIPlus_FontFamilyCreate($sFont)
+    Local Const $hFont = _GDIPlus_FontCreate($hFamily, $iRadius / 10)
+	_GDIPlus_StringFormatSetAlign($hFormat, 1)
+	_GDIPlus_StringFormatSetLineAlign($hFormat, 1)
+    Local $tLayout = _GDIPlus_RectFCreate(0, 0, $iW, $iH)
+	Local Static $iColor = 0x00, $iDir = 13
+	Local $hBrush_txt = _GDIPlus_BrushCreateSolid(0xFF000000 + 0x010000 * $iColor + 0x0100 * $iColor + $iColor)
+	_GDIPlus_GraphicsDrawStringEx($hGfx, $sText, $hFont, $tLayout, $hFormat, $hBrush_txt)
+	$iColor += $iDir
+	If $iColor > 0xFF Then
+		$iColor = 0xFF
+		$iDir *= -1
+	ElseIf $iColor < 0x16 Then
+		$iDir *= -1
+		$iColor = 0x16
+	EndIf
+	_GDIPlus_BrushDispose($hBrush_txt)
+    _GDIPlus_FontDispose($hFont)
+    _GDIPlus_FontFamilyDispose($hFamily)
+    _GDIPlus_StringFormatDispose($hFormat)
 	_GDIPlus_GraphicsDispose($hGfx)
-	_GDIPlus_BitmapDispose($hBmp)
-	Return $hHBITMAP
-EndFunc   ;==>_GDIPlus_SpinningAndGlowing
+
+	If $bHBitmap Then
+		Local $hHBITMAP = _GDIPlus_BitmapCreateHBITMAPFromBitmap($hBitmap)
+		_GDIPlus_BitmapDispose($hBitmap)
+		Return $hHBITMAP
+	EndIf
+	Return $hBitmap
+EndFunc
 Func _FileWriteAccessible($sFile)
 	; Returns
 	;            1 = Success, file is writeable and deletable
