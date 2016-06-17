@@ -55,10 +55,14 @@
 	//v1.6.2
 	- [GUI]Improved various aesthetics, brought back drag 'n drop for metro GUI
 	- [List]Corrected Google Chrome data path
+	//v1.6.3
+	- [Fix]Compression no longer gets stuck on non-existing files
+	//v1.6.4
+	- [Fix]Reworked and fixed all bugs with File Shredder
 	TODO: (high to low priority)
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
-	- Generate html file to assist the restoration process
+	- Generate html file to assist with restoration process
 #ce
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -82,8 +86,8 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.6.2)
-#pragma compile(FileVersion, 1.6.2)
+#pragma compile(ProductVersion, 1.6.4)
+#pragma compile(FileVersion, 1.6.4)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -126,7 +130,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.6.2"
+Global $g_sProgramVersion = "1.6.4"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
@@ -150,7 +154,7 @@ $GUI_MINIMIZE_BUTTON = $hGUIx[5]
 $cPic = GUICtrlCreatePic("", 50, 0, $aGUIPos[2], $aGUIPos[2]);Loading Animation
 GUICtrlSetResizing($cPic, 8 + 32 + 128 + 768)
 GUICtrlSetState($cPic, $GUI_HIDE)
-$btnNext = _Metro_CreateButtonEx($GUI_HOVER_REG, "Next", 308, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnNext = _Metro_CreateButtonEx($GUI_HOVER_REG, "Next", 314, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnNext, 768 + 64);HCentered
 $btnBack = _Metro_CreateButtonEx($GUI_HOVER_REG, "Back", 18, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnBack, 768 + 64);HCentered
@@ -180,7 +184,7 @@ $cmBkUp2_SelectAll = GUICtrlCreateMenuItem("Select-All", $hBkUp2_ContextMenu)
 
 $sLastListUsed = IniRead("_Res\Settings.ini", "General", "LAST_USED_LIST", "MyNewList")
 If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
-$comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 140, $aGUIPos[3] - 38, 120)
+$comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 145, $aGUIPos[3] - 38, 120)
 GUICtrlSetTip($comboBkUp2_Profile, "Select your list, new list will be created if list does not exist.")
 $hListFileSearch = FileFindFirstFile("ev_*")
 For $i = 0 To 50;Maximum 50 list profiles are registered.
@@ -213,13 +217,13 @@ GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_CHECKED)
 
 ;//Create stage-2 Restore GUI elements(first in Restore)
 $lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder. Drag 'n Drop accepted.", 40, $aGUIPos[3] - 333, 300)
-$ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 314, $aGUIPos[2] - 125, 20)
+$ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 314, $aGUIPos[2] - 115, 20)
 GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_DROPACCEPTED)
-$btnRestore2_Browse = _Metro_CreateButtonEx($GUI_HOVER_REG, "...", $aGUIPos[2] - 82, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnRestore2_Browse = _Metro_CreateButtonEx($GUI_HOVER_REG, "...", $aGUIPos[2] - 72, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 
 ;//Create stage-3 Restore GUI elements
 $lRestore3_Pwd = GUICtrlCreateLabel("Enter the Password used during backup process", 40, $aGUIPos[3] - 333)
-$ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 93, 18, -1, $WS_EX_ACCEPTFILES)
+$ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 93, 18)
 
 ;//Icons for BkUp2_ListView
 $hImage = _GUIImageList_Create(16, 16)
@@ -411,7 +415,7 @@ Func Restore4()
 	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
 	;//Decrypt
 	$aGUIPos = WinGetPos($hGUI)
-	$lRestore4_Status = GUICtrlCreateLabel("Decrypting container..", ($aGUIPos[2] / 2) - 120, $aGUIPos[3] - 233, 280, 30, BitOR(0x0200, 0x01))
+	$lRestore4_Status = GUICtrlCreateLabel("", ($aGUIPos[2] / 2) - 120, $aGUIPos[3] - 233, 280, 30, BitOR(0x0200, 0x01))
 	GUICtrlSetFont($lRestore4_Status, 11, 550, Default, "Segoe UI")
 	GUICtrlSetResizing($lRestore4_Status, 8 + 32 + 128 + 768)
 	$sReport &= "Decrypting container.." & @CRLF
@@ -429,7 +433,7 @@ Func Restore4()
 				Sleep(200)
 			Next
 			;//Extract data
-			GUICtrlSetData($lRestore4_Status, "Extracting compressed data..")
+			GUICtrlSetData($lRestore4_Status, "")
 			$g_LoadingText = "Extracting"
 			_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
 			If $iError Then
@@ -602,7 +606,7 @@ Func ToBkUp4()
 		$g_LoadingText = "Compressing"
 		$sReport &= "Compressing your data.." & @CRLF
 		$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
-		GUICtrlSetData($lBkUp4_Status, "Compressing your data..")
+		GUICtrlSetData($lBkUp4_Status, "")
 		GUICtrlSetResizing($lBkUp4_Status, 8 + 32 + 128 + 768)
 		GUICtrlSetResizing($lBkUp4_CurrentFile, 8 + 32 + 128 + 768);Centered
 		GUICtrlSetFont($lBkUp4_Status, 11, 550, Default, "Segoe UI")
@@ -615,9 +619,13 @@ Func ToBkUp4()
 			If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 		Next
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Process all backup items read from listview
-			If Mod($i, 8) = 0 Then Sleep(1500) ;Take a break every 8 items processed
+			If Mod($i, 8) = 0 Then Sleep(500) ;Take a break every 8 items processed
 			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
 			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
+			If Not FileExists($sFileToCompress) Then
+				$sReport &= $sFileToCompress & " compression failed. File does not exist." & @CRLF
+				ContinueLoop				
+			EndIf	
 			_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096) ;// Add items to container
 			If @error Then
 				If @error = 9 Then
@@ -641,7 +649,7 @@ Func ToBkUp4()
 		AdlibUnRegister("HideCompressing")
 		$sReport &= "Encrypting data.." & @CRLF
 		GUICtrlSetData($lBkUp4_CurrentFile, "")
-		GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
+		GUICtrlSetData($lBkUp4_Status, "")
 		$g_LoadingText = "Encrypting"
 		$sContainerName = $sCurProfile
 		If FileExists($sContainerName) Then
@@ -1059,12 +1067,6 @@ Func _FileShred($sFilePath)
 	If StringRegExp(FileGetAttrib($sFilePath), "(R)") Then FileSetAttrib($sFilePath, "-R"); RegEx is faster than StringInStr()
 	$aFilePath = StringRegExp($sFilePath, "^(.*\\)(.*)$", 3)
 	If Not IsArray($aFilePath) Then Return
-	FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
-	FileRename($aFilePath[0] & "0000000000000000000000000000000", $aFilePath[0] & "0000000000000")
-	FileRename($aFilePath[0] & "0000000000000", $aFilePath[0] & "00000")
-	$sFilePath = $aFilePath[0] & "00000"
-	$hFileToShred = FileOpen($sFilePath, 18)
-	If @error Then Return @error
 	$sChr = _StringRepeat($sChrN, 1024)
 	If FileGetSize($sFilePath) <= 1024 Then
 		$iSiz = 1
@@ -1072,12 +1074,18 @@ Func _FileShred($sFilePath)
 		$iSiz = Round(FileGetSize($sFilePath) / 1024)
 	EndIf
 	$iSiz = Int($iSiz)
-	For $a = 0 To 2
-		For $i = 1 To $iSiz
+	If @error Then Return @error
+	For $a = 0 To 2 ;//Number of times to overwrite
+		$hFileToShred = FileOpen($sFilePath, 18)
+		For $i = 1 To $iSiz			
 			FileWrite($hFileToShred, $sChr)
 		Next
+		FileClose($hFileToShred)
 	Next
-	FileClose($hFileToShred)
+	FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
+	FileRename($aFilePath[0] & "0000000000000000000000000000000", $aFilePath[0] & "0000000000000")
+	FileRename($aFilePath[0] & "0000000000000", $aFilePath[0] & "00000")
+	$sFilePath = $aFilePath[0] & "00000"
 	FileDelete($sFilePath)
 EndFunc   ;==>_FileShred
 Func FileRename($FileName, $ReName)
