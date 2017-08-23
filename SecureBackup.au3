@@ -1,7 +1,7 @@
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
-	Copyright (C) 2015 T.H.
+	T.H. evorlet@gmail.com
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
@@ -164,7 +164,7 @@ $btnOriginal_Backup = _Metro_CreateButtonEx($GUI_HOVER_REG, "Backup", 144, 170, 
 GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
 $btnOriginal_Restore = _Metro_CreateButtonEx($GUI_HOVER_REG, "Restore", 144, 260, 120, 60, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
-$lOriginal_Credit = GUICtrlCreateLabel("Copyright(C) 2015 T.H. evorlet@wmail.io", 195, 470)
+$lOriginal_Credit = GUICtrlCreateLabel("T.H. evorlet@wmail.io", 195, 470)
 
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
