@@ -1,7 +1,7 @@
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
-	T.H. evorlet@gmail.com
+	2015 T.H. evorlet@gmail.com
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
@@ -59,6 +59,10 @@
 	- [Fix]Compression no longer gets stuck on non-existing files
 	//v1.6.4
 	- [Fix]Reworked and fixed all bugs with File Shredder
+	//v1.6.5
+	- [Fix]Bug where default folders get added again after completing 1 BackUp pass
+	//v1.6.6
+	- [Change]Shred context menu now requires confirmation
 	TODO: (high to low priority)
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
@@ -86,8 +90,8 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.6.4)
-#pragma compile(FileVersion, 1.6.4)
+#pragma compile(ProductVersion, 1.6.6)
+#pragma compile(FileVersion, 1.6.6)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, evorlet@wmail.io)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -99,6 +103,7 @@ If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_s
 ;//[Shred] cmd if called with parameter
 If $CmdLine[0] >= 1 Then
 	If StringRegExp($CmdLineRaw, "/shred") Then
+		If MsgBox(64 + 4, "EvShred", "Shred file(s)?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then
 		If StringRegExp($CmdLine[1], "\\") Then
 			If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
 				If _FileWriteAccessible($CmdLine[1]) = 1 Then
@@ -110,6 +115,7 @@ If $CmdLine[0] >= 1 Then
 				_PurgeDir($CmdLine[1])
 				DirRemove($CmdLine[1], 1)
 			EndIf
+		EndIf
 		EndIf
 	ElseIf $CmdLineRaw = "/add" Then
 		_AddShredderCM()
@@ -130,7 +136,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.6.4"
+Global $g_sProgramVersion = "1.6.6"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
@@ -138,33 +144,34 @@ Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
 Global $hBkUp2_ContextMenu, $cmBkUp2_SelectAll, $lBkUp4_CurrentFile, $lBkUp4_Status, $eReport, $btnOriginal_Backup, $btnOriginal_Restore
 Global $nSizeColumn, $btnNext, $lBkUp3_Pwd, $lBkUp3_PwdConfirm, $ipBkUp3_Pwd, $ipBkUp3_PwdConfirm, $btnOriginal_Restore, $cbBkUp3_ShowPwd
 Global $lvBkUp2_BackupList, $btnOriginal_Backup
-Global $aGUIPos[] = [0,0,400,500]
+Global $aGUIPos[] = [0, 0, 400, 500]
 ;//GUI creation
 
 ;$hGUI = GUICreate($g_sProgramName, 400, 500, -1, 100, BitOR($WS_MINIMIZEBOX, $WS_SIZEBOX), $WS_EX_ACCEPTFILES)
-$hGUIx =_Metro_CreateGUI($g_sProgramName, 403, 500, -1, 100, True, True)
+$hGUIx = _Metro_CreateGUI($g_sProgramName, 403, 500, -1, 100, True, True)
 $GUI_HOVER_REG = $hGUIx[1]
 $hGUI = $hGUIx[0]
 $GUI_CLOSE_BUTTON = $hGUIx[2]
 $GUI_MAXIMIZE_BUTTON = $hGUIx[3]
 $GUI_RESTORE_BUTTON = $hGUIx[4]
 $GUI_MINIMIZE_BUTTON = $hGUIx[5]
+GUISetBkColor(0xFFFFFFFF, $hGUI)
 
 ;//Create global GUI elements that will be re-used through the stages
 $cPic = GUICtrlCreatePic("", 50, 0, $aGUIPos[2], $aGUIPos[2]);Loading Animation
 GUICtrlSetResizing($cPic, 8 + 32 + 128 + 768)
 GUICtrlSetState($cPic, $GUI_HIDE)
-$btnNext = _Metro_CreateButtonEx($GUI_HOVER_REG, "Next", 314, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnNext = _Metro_CreateButtonEx($GUI_HOVER_REG, "Next", 314, 457, 70, 30, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnNext, 768 + 64);HCentered
-$btnBack = _Metro_CreateButtonEx($GUI_HOVER_REG, "Back", 18, 457, 70, 30, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnBack = _Metro_CreateButtonEx($GUI_HOVER_REG, "Back", 18, 457, 70, 30, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnBack, 768 + 64);HCentered
 
 ;//Create startup GUI elements (first step)
-$btnOriginal_Backup = _Metro_CreateButtonEx($GUI_HOVER_REG, "Backup", 144, 170, 120, 60, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnOriginal_Backup = _Metro_CreateButtonEx($GUI_HOVER_REG, "Backup", 144, 170, 120, 60, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
-$btnOriginal_Restore = _Metro_CreateButtonEx($GUI_HOVER_REG, "Restore", 144, 260, 120, 60, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnOriginal_Restore = _Metro_CreateButtonEx($GUI_HOVER_REG, "Restore", 144, 260, 120, 60, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
-$lOriginal_Credit = GUICtrlCreateLabel("T.H. evorlet@wmail.io", 195, 470)
+$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. evorlet@gmail.com", 195, 470)
 
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
@@ -187,7 +194,7 @@ If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
 $comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 145, $aGUIPos[3] - 38, 120)
 GUICtrlSetTip($comboBkUp2_Profile, "Select your list, new list will be created if list does not exist.")
 $hListFileSearch = FileFindFirstFile("ev_*")
-For $i = 0 To 50;Maximum 50 list profiles are registered.
+For $i = 0 To 50;Maximum 50 profiles are registered.
 	$sListFileFullname = FileFindNextFile($hListFileSearch)
 	If @error Then ExitLoop
 	$aListFileReg = StringRegExp($sListFileFullname, "ev_(.+)", 3)
@@ -219,7 +226,7 @@ GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_CHECKED)
 $lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder. Drag 'n Drop accepted.", 40, $aGUIPos[3] - 333, 300)
 $ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 314, $aGUIPos[2] - 115, 20)
 GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_DROPACCEPTED)
-$btnRestore2_Browse = _Metro_CreateButtonEx($GUI_HOVER_REG, "...", $aGUIPos[2] - 72, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor,  $ButtonTextColor, "Segoe UI", 11)
+$btnRestore2_Browse = _Metro_CreateButtonEx($GUI_HOVER_REG, "...", $aGUIPos[2] - 72, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 
 ;//Create stage-3 Restore GUI elements
 $lRestore3_Pwd = GUICtrlCreateLabel("Enter the Password used during backup process", 40, $aGUIPos[3] - 333)
@@ -325,7 +332,7 @@ Func _Interface()
 		Case $cbBkUp3_ShowPwd
 			BkUp3_ShowPassword()
 	EndSwitch
-EndFunc	
+EndFunc   ;==>_Interface
 
 #Region Dealing with GUI elements (buttons, selection..)
 Func HideAllControls($bHideNextBtn = True)
@@ -426,7 +433,7 @@ Func Restore4()
 		If FileExists("_temp.zip") Then _FileShred($sTempZip)
 		$g_LoadingText = "Decrypting"
 		_Crypt_DecryptFile(StringReplace(GUICtrlRead($ipRestore2_ArchiveDir), "\\", "\"), $g_sScriptDir & "\_temp.zip", $hKey, $CALG_USERKEY)
-		$iError = @error		
+		$iError = @error
 		If Not $iError Then
 			For $i = 0 To 30
 				If FileExists("_temp.zip") Then ExitLoop
@@ -550,7 +557,7 @@ Func ToBkUp3()
 	
 	;//Remember default folders' states
 	_DefaultItemStates_Save()
-	#EndRegion
+	#EndRegion List stuff
 	
 	;//GUI stuff
 	HideAllControls(False)
@@ -569,7 +576,7 @@ Func ToBkUp3()
 EndFunc   ;==>ToBkUp3
 
 Func _ConvertDefaultFolderPath($sFolder)
-	;//Replace default folders like "Documents" with actual dir path like C:\Users\Sam\Documents, which is stored in [$i][1]
+	;//Replace default folders like "Documents" with actual dir path like "C:\Users\Sam\Documents", dir path is stored in $g_aDefaultItems[$i][1]
 	For $i = 0 To $g_nDefaultFoldersCount - 1
 		If $sFolder = $g_aDefaultItems[$i][0] Then
 			$sFolder = $g_aDefaultItems[$i][1]
@@ -619,26 +626,26 @@ Func ToBkUp4()
 			If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 		Next
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Process all backup items read from listview
-			If Mod($i, 8) = 0 Then Sleep(500) ;Take a break every 8 items processed
+			If Mod($i, 8) = 0 Then Sleep(300) ;Take a break every 8 items processed
 			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
 			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
 			If Not FileExists($sFileToCompress) Then
 				$sReport &= $sFileToCompress & " compression failed. File does not exist." & @CRLF
-				ContinueLoop				
-			EndIf	
+				ContinueLoop
+			EndIf
 			_Zip_AddItem($sTempZip, $sFileToCompress, "", 4 + 8 + 16 + 1024 + 4096) ;// Add items to container
 			If @error Then
 				If @error = 9 Then
 					$sReport &= $sFileToCompress & " filename duplicate, renaming.." & @CRLF
 					$sTemp = "_" & Random(1, 9, 1)
 					$sNewFileName = StringRegExpReplace($sFileToCompress, "^(.*\\)(.*)(\.\w+)", "$1$2" & $sTemp & "$3")
-					FileRename($sFileToCompress, $sNewFileName)
+					_FileRename($sFileToCompress, $sNewFileName)
 					For $a = 0 To 10
 						Sleep(50)
 						If FileExists($sNewFileName) Then ExitLoop
 					Next
 					_Zip_AddItem($sTempZip, $sNewFileName, "", 4 + 8 + 16 + 1024)
-					FileRename($sNewFileName, $sFileToCompress)
+					_FileRename($sNewFileName, $sFileToCompress)
 				Else
 					$sReport &= $sFileToCompress & " compression failed. Error: " & @error & @CRLF
 				EndIf
@@ -661,9 +668,9 @@ Func ToBkUp4()
 			Next
 		EndIf
 		_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\" & $sContainerName, $hKey, $CALG_USERKEY)
-		If @error Then 
+		If @error Then
 			$sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
-		Else	
+		Else
 			GUICtrlSetData($lBkUp4_Status, "Shredding leftovers..")
 			_FileShred($sTempZip)
 			$sReport &= "File saved to " & $g_sScriptDir & "\" & $sContainerName & @CRLF
@@ -709,7 +716,7 @@ Func ToBkUp5()
 	_GUICtrlListView_DeleteAllItems($lvBkUp2_BackupList)
 	_GUICtrlButton_SetImage($btnNext, $g_sScriptDir & "\_Res\Next.bmp")
 	BkUp2_SelectAll($lvBkUp2_BackupList)
-	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then 
+	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then
 		If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then
 			_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\" & $sCurProfile)
 		Else
@@ -890,7 +897,7 @@ Func _AddDefaultFoldersToLV($hWnd)
 		;//Back up Chrome data
 		If _ArraySearch($g_aDefaultItems, "Chrome History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\History|\_Res\Chrome.bmp")
 		If _ArraySearch($g_aDefaultItems, "Chrome Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Bookmarks|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Bookmarks|\_Res\Chrome.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Login Data|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Passwords|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Login Data|\_Res\Chrome.bmp")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then
 		;//Back up Chromium data
@@ -927,7 +934,7 @@ Func _GetItemSizeString($sItemPath)
 	;//Return something like "500Kb" or "23Mb"
 	If Not FileExists($sItemPath) Then Return "N/A"
 	If StringInStr(FileGetAttrib($sItemPath), "D") Then;//Item is a directory
-		$nRawItemSize = DirGetSize($sItemPath)		
+		$nRawItemSize = DirGetSize($sItemPath)
 	Else;//Item is a file
 		$nRawItemSize = FileGetSize($sItemPath)
 	EndIf
@@ -937,9 +944,10 @@ Func _GetItemSizeString($sItemPath)
 		$nItemSize = Round($nRawItemSize / 1024 / 1024, 1) & "MB"
 	EndIf
 	Return $nItemSize
-EndFunc	
+EndFunc   ;==>_GetItemSizeString
 
 Func _AddShredderCM()
+	;//Add "Shred" option to Windows context menus.
 	If IsAdmin() Then
 		RegWrite("HKCR\*\shell\Shred\command", "", "REG_SZ", StringReplace(@ScriptFullPath, "\", "\\") & ' "%1" "/shred"')
 		RegWrite("HKCR\*\shell\Shred\", "Icon", "REG_EXPAND_SZ", $g_sScriptDir & "\_Res\1442169766_MB__LOCK.ico")
@@ -953,7 +961,7 @@ EndFunc   ;==>_AddShredderCM
 
 Func _AboutCM()
 	_Metro_MsgBox($g_sProgramName & " " & $g_sProgramVersion, "Gather your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
-			 & "Copyright(C) 2015 T.H. evorlet@wmail.io" & @CRLF _
+			 & "T.H. evorlet@gmail.com" & @CRLF _
 			 & "This software is open source and registered under GNU GPL." & @CRLF _
 			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
 EndFunc   ;==>_AboutCM
@@ -1075,20 +1083,18 @@ Func _FileShred($sFilePath)
 	EndIf
 	$iSiz = Int($iSiz)
 	If @error Then Return @error
-	For $a = 0 To 2 ;//Number of times to overwrite
+	For $a = 0 To 1 ;//Number of times to overwrite
 		$hFileToShred = FileOpen($sFilePath, 18)
-		For $i = 1 To $iSiz			
+		For $i = 1 To $iSiz
 			FileWrite($hFileToShred, $sChr)
 		Next
 		FileClose($hFileToShred)
 	Next
-	FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
-	FileRename($aFilePath[0] & "0000000000000000000000000000000", $aFilePath[0] & "0000000000000")
-	FileRename($aFilePath[0] & "0000000000000", $aFilePath[0] & "00000")
-	$sFilePath = $aFilePath[0] & "00000"
+	_FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
+	$sFilePath = $aFilePath[0] & "0000000000000000000000000000000"
 	FileDelete($sFilePath)
 EndFunc   ;==>_FileShred
-Func FileRename($FileName, $ReName)
+Func _FileRename($FileName, $ReName)
 	Local $SHFILEOPSTRUCT, $SourceStruct, $DestStruct
 	Local Const $FO_RENAME = 0x0004
 	Local Const $FOF_SILENT = 0x0004
@@ -1112,7 +1118,7 @@ Func FileRename($FileName, $ReName)
 		Return SetError(@error, @extended, 0)
 	EndIf
 	Return 1
-EndFunc   ;==>FileRename
+EndFunc   ;==>_FileRename
 Func _StringToStruct($string)
 	Local $iLen = StringLen($string)
 	Local $tStruct = DllStructCreate("char[" & String($iLen + 2) & "]")
@@ -1170,7 +1176,7 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	_GDIPlus_GraphicsSetSmoothingMode($hGfx, 4 + (@OSBuild > 5999))
 	_GDIPlus_GraphicsSetTextRenderingHint($hGfx, 3)
 	_GDIPlus_GraphicsSetPixelOffsetMode($hGfx, $GDIP_PIXELOFFSETMODE_HIGHQUALITY)
-	_GDIPlus_GraphicsClear($hGfx, 0xFFFFFFFF)
+	_GDIPlus_GraphicsClear($hGfx, 0XFFFFFFFF)
 
 	Local $iRadius = ($iW > $iH) ? $iH * 0.6 : $iW * 0.6
 
@@ -1178,7 +1184,7 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	_GDIPlus_PathAddEllipse($hPath, ($iW - ($iRadius + 24)) / 2, ($iH - ($iRadius + 24)) / 2, $iRadius + 24, $iRadius + 24)
 
 	Local $hBrush = _GDIPlus_PathBrushCreateFromPath($hPath)
-	_GDIPlus_PathBrushSetCenterColor($hBrush, 0xFFFFFFFF)
+	_GDIPlus_PathBrushSetCenterColor($hBrush, 0XFFFFFFFF)
 	_GDIPlus_PathBrushSetSurroundColor($hBrush, 0x08101010)
 	_GDIPlus_PathBrushSetGammaCorrection($hBrush, True)
 
@@ -1197,8 +1203,8 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	_GDIPlus_PathDispose($hPath)
 	_GDIPlus_BrushDispose($hBrush)
 
-	Local Const $hBrush_Black = _GDIPlus_BrushCreateSolid(0xFFFFFFFF)
-	_GDIPlus_GraphicsFillEllipse($hGfx, ($iW - ($iRadius + 10)) / 2, ($iH - ($iRadius + 10)) / 2, $iRadius + 10, $iRadius + 10, $hBrush_Black)
+	Local Const $hBrush_White = _GDIPlus_BrushCreateSolid(0xFFFFFFFF)
+	_GDIPlus_GraphicsFillEllipse($hGfx, ($iW - ($iRadius + 10)) / 2, ($iH - ($iRadius + 10)) / 2, $iRadius + 10, $iRadius + 10, $hBrush_White)
 
 	Local Const $hBitmap_Gradient = _GDIPlus_BitmapCreateFromScan0($iRadius, $iRadius)
 	Local Const $hGfx_Gradient = _GDIPlus_ImageGetGraphicsContext($hBitmap_Gradient)
@@ -1213,20 +1219,20 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	Local Const $hBrush_Gradient = _GDIPlus_LineBrushCreate($iRadius, $iRadius / 2, $iRadius, $iRadius, 0xFF000000, 0xFF33CAFD, 1)
 	_GDIPlus_LineBrushSetGammaCorrection($hBrush_Gradient)
 	_GDIPlus_GraphicsFillEllipse($hGfx_Gradient, 0, 0, $iRadius, $iRadius, $hBrush_Gradient)
-	_GDIPlus_GraphicsFillEllipse($hGfx_Gradient, 4, 4, $iRadius - 8, $iRadius - 8, $hBrush_Black)
+	_GDIPlus_GraphicsFillEllipse($hGfx_Gradient, 4, 4, $iRadius - 8, $iRadius - 8, $hBrush_White)
 	_GDIPlus_GraphicsDrawImageRect($hGfx, $hBitmap_Gradient, ($iW - $iRadius) / 2, ($iH - $iRadius) / 2, $iRadius, $iRadius)
 	_GDIPlus_BrushDispose($hBrush_Gradient)
-	_GDIPlus_BrushDispose($hBrush_Black)
+	_GDIPlus_BrushDispose($hBrush_White)
 	_GDIPlus_GraphicsDispose($hGfx_Gradient)
 	_GDIPlus_BitmapDispose($hBitmap_Gradient)
 	_GDIPlus_MatrixDispose($hMatrix)
 
 	Local Const $hFormat = _GDIPlus_StringFormatCreate()
-    Local Const $hFamily = _GDIPlus_FontFamilyCreate($sFont)
-    Local Const $hFont = _GDIPlus_FontCreate($hFamily, $iRadius / 10)
+	Local Const $hFamily = _GDIPlus_FontFamilyCreate($sFont)
+	Local Const $hFont = _GDIPlus_FontCreate($hFamily, $iRadius / 10)
 	_GDIPlus_StringFormatSetAlign($hFormat, 1)
 	_GDIPlus_StringFormatSetLineAlign($hFormat, 1)
-    Local $tLayout = _GDIPlus_RectFCreate(0, 0, $iW, $iH)
+	Local $tLayout = _GDIPlus_RectFCreate(0, 0, $iW, $iH)
 	Local Static $iColor = 0x00, $iDir = 13
 	Local $hBrush_txt = _GDIPlus_BrushCreateSolid(0xFF000000 + 0x010000 * $iColor + 0x0100 * $iColor + $iColor)
 	_GDIPlus_GraphicsDrawStringEx($hGfx, $sText, $hFont, $tLayout, $hFormat, $hBrush_txt)
@@ -1239,9 +1245,9 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 		$iColor = 0x16
 	EndIf
 	_GDIPlus_BrushDispose($hBrush_txt)
-    _GDIPlus_FontDispose($hFont)
-    _GDIPlus_FontFamilyDispose($hFamily)
-    _GDIPlus_StringFormatDispose($hFormat)
+	_GDIPlus_FontDispose($hFont)
+	_GDIPlus_FontFamilyDispose($hFamily)
+	_GDIPlus_StringFormatDispose($hFormat)
 	_GDIPlus_GraphicsDispose($hGfx)
 
 	If $bHBitmap Then
@@ -1250,7 +1256,7 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 		Return $hHBITMAP
 	EndIf
 	Return $hBitmap
-EndFunc
+EndFunc   ;==>_GDIPlus_MultiColorLoader
 Func _FileWriteAccessible($sFile)
 	; Returns
 	;            1 = Success, file is writeable and deletable
@@ -1291,13 +1297,13 @@ Func _Crypt_EncryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgI
 		For $a = 1 To $aFiles[0]
 			$sDestFile = _Crypt_EncryptData($aFiles[$a], $_sKey, $_iAlgID)
 			_Crypt_EncryptFile($_sSourceFolder & "\" & $aFiles[$a], $_sDestinationFolder & "\" & $sDestFile, $_sKey, $_iAlgID)
-			If @error Then 
-				If @error > 530 Then 
+			If @error Then
+				If @error > 530 Then
 					MsgBox(16, 'Error occurred', 'Unable to encrypt piece, possibly file in use.')
 				Else
 					MsgBox(16, 'Error occurred', 'Error during encryption. Code ' & @error & @CRLF & 'Your data might be lost, be advised!')
-				EndIf	
-			EndIf	
+				EndIf
+			EndIf
 		Next
 	EndIf
 	$aFolders = _FileListToArray($_sSourceFolder, '*', 2);List all folders in dir
@@ -1308,6 +1314,7 @@ Func _Crypt_EncryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgI
 		Next
 	EndIf
 EndFunc   ;==>_Crypt_EncryptFolder
+
 Func _Crypt_DecryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgID)
 	Local $sDestFile
 	If Not FileExists($_sDestinationFolder) Then DirCreate($_sDestinationFolder)
