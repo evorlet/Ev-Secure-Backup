@@ -1,7 +1,8 @@
 # Ev-Secure-Backup
 Gather your files in one place and encrypt them for more secure and easier online backup
 
-Thanks to BBs19 for Metro UI UDF, UEZ for loading CSS loading animations.
+Thanks to BBs19 for Metro UI UDF, UEZ for CSS loading animations.
+
 
 ![alt tag](https://cloud.githubusercontent.com/assets/12136678/11063209/9c9afe1e-87e7-11e5-8901-ab69853201d0.png)
 
