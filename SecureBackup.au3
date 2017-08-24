@@ -1,7 +1,11 @@
 #cs
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
+	
+	Thanks to BBs19 for Metro UI UDF, UEZ for CSS loading animations.
+	
 	2015 T.H. evorlet@gmail.com
+	
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
@@ -62,8 +66,11 @@
 	//v1.6.5
 	- [Fix]Bug where default folders get added again after completing 1 BackUp pass
 	//v1.6.6
-	- [Change]Shred context menu now requires confirmation
+	- [Other]Shred context menu now requires confirmation
+	//v1.6.7
+	- [Other]File shredder 2nd pass now overwrites with random data instead of 0s
 	TODO: (high to low priority)
+	- Option to choose number of passes for file shredder
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
 	- Generate html file to assist with restoration process
@@ -90,10 +97,10 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.6.6)
-#pragma compile(FileVersion, 1.6.6)
+#pragma compile(ProductVersion, 1.6.7)
+#pragma compile(FileVersion, 1.6.7)
 #pragma compile(UPX, False)
-#pragma compile(LegalCopyright, evorlet@wmail.io)
+#pragma compile(LegalCopyright, evorlet@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
 _SetTheme("WhiteBlue")
@@ -136,7 +143,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.6.6"
+Global $g_sProgramVersion = "1.6.7"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
@@ -171,7 +178,7 @@ $btnOriginal_Backup = _Metro_CreateButtonEx($GUI_HOVER_REG, "Backup", 144, 170, 
 GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
 $btnOriginal_Restore = _Metro_CreateButtonEx($GUI_HOVER_REG, "Restore", 144, 260, 120, 60, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
-$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. evorlet@gmail.com", 195, 470)
+$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. evorlet@gmail.com", 245, 470)
 
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
@@ -961,7 +968,7 @@ EndFunc   ;==>_AddShredderCM
 
 Func _AboutCM()
 	_Metro_MsgBox($g_sProgramName & " " & $g_sProgramVersion, "Gather your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
-			 & "T.H. evorlet@gmail.com" & @CRLF _
+			 & "2015 T.H. evorlet@gmail.com" & @CRLF _
 			 & "This software is open source and registered under GNU GPL." & @CRLF _
 			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
 EndFunc   ;==>_AboutCM
@@ -1069,13 +1076,20 @@ Func _PurgeDir($sDataDir);Shred all files in a folder - Recursive
 	EndIf
 EndFunc   ;==>_PurgeDir
 
+Func _RandomData($nStringSize);//in bytes
+	Local $sResult
+	For $i = 1 To $nStringSize
+		$sResult &= Chr(Random(0, 254, 1))
+	Next
+	Return $sResult
+EndFunc
+
 Func _FileShred($sFilePath)
 	Local $aFilePath, $iSiz, $sChr = ""
 	Local Static $sChrN = Chr(48)
 	If StringRegExp(FileGetAttrib($sFilePath), "(R)") Then FileSetAttrib($sFilePath, "-R"); RegEx is faster than StringInStr()
 	$aFilePath = StringRegExp($sFilePath, "^(.*\\)(.*)$", 3)
 	If Not IsArray($aFilePath) Then Return
-	$sChr = _StringRepeat($sChrN, 1024)
 	If FileGetSize($sFilePath) <= 1024 Then
 		$iSiz = 1
 	Else
@@ -1083,13 +1097,24 @@ Func _FileShred($sFilePath)
 	EndIf
 	$iSiz = Int($iSiz)
 	If @error Then Return @error
-	For $a = 0 To 1 ;//Number of times to overwrite
-		$hFileToShred = FileOpen($sFilePath, 18)
-		For $i = 1 To $iSiz
-			FileWrite($hFileToShred, $sChr)
-		Next
-		FileClose($hFileToShred)
+	
+	;//Number of passes
+	;1st pass - write 0s
+	$sChr = _StringRepeat($sChrN, 1024)
+	$hFileToShred = FileOpen($sFilePath, 18)
+	For $i = 1 To $iSiz
+		FileWrite($hFileToShred, $sChr)
 	Next
+	FileClose($hFileToShred)
+	
+	;2nd pass - write random data
+	$hFileToShred = FileOpen($sFilePath, 18)
+	$sChr = _RandomData(1024)
+	For $i = 1 To $iSiz
+		FileWrite($hFileToShred, $sChr)
+	Next
+	FileClose($hFileToShred)
+	
 	_FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
 	$sFilePath = $aFilePath[0] & "0000000000000000000000000000000"
 	FileDelete($sFilePath)
