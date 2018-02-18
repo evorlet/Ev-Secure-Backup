@@ -1,0 +1,60 @@
+	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
+
+	Changelog:
+	//v1.1:
+	- Fixed "add files.." selection issue, strengthened derived password (v1.0 backups can't be retrieved in v1.1 or later)
+	//v1.2:
+	- [GUI]Corrected "show password" and loading animation's position
+	- [List]Removed .txt requirement for lists, list names can't be empty, added option to purge all lists
+	- [Other]Added Purge Folders shell for FileShredder, option to Purge YourData restoration folder
+	//v1.3:
+	- [GUI]Modified "About"
+	- [List]Default folders are no longer de-selected when changing between lists, unchecked items are now saved
+	- [Script]Cleanup and descriptions for future implementation and maintenance
+	//v1.3.5:
+	- [GUI]Fixed label resizing problem in backup step 3
+	- [List]Fixed new files not auto-checking when added, fixed bug where default folders were not processed, added option to open file location
+	- [Script]Global array for default folders => less constant elements
+	//v1.3.7:
+	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup
+	//v1.3.9:
+	- [List]Browser data states are now saved
+	- [Other]List files are now encrypted
+	//v1.4.4:
+	- [GUI]Show password checkbox state is remembered, corrected git link in "About" section, redesigned buttons
+	- [Other]Added option to purge jump lists and event logs in Windows, Icon for FileShredder, FileShredder can now handle UAC-locked files
+	- [Script]Replaced _FileInUse() with _FileWriteAccessible()
+	//v1.4.8:
+	- [Encryption]Shortened derived password for better performance, added compression-free encryption
+	- [GUI]Corrected report area positioning, fixed various GUI bugs
+	- [Other]Some parts of registry will be purged during Windows activity wipe to remove traces
+	//v1.5.0:
+	- [Encryption]Output containers are now named after profile name instead of "EncryptedContainer"
+	- [GUI]Cursor for Backup and Restore buttons
+	- [Other]Purge all history located in "AppDataLocal\Microsoft\Windows", "\AppData\Local\Microsoft\Windows\InetCache", "AppData\Media Cache" - WinClear
+	//v1.5.3
+	- [GUI]Metro GUI overhaul
+	//v1.6.0
+	- [List]User can now selectively backup browser history/bookmarks instead of processing everything
+	- [List]Better file/folder size display
+	//v1.6.2
+	- [GUI]Improved various aesthetics, brought back drag 'n drop for metro GUI
+	- [List]Corrected Google Chrome data path
+	//v1.6.3
+	- [Fix]Compression no longer gets stuck on non-existing files
+	//v1.6.4
+	- [Fix]Reworked and fixed all bugs with File Shredder
+	//v1.6.5
+	- [Fix]Bug where default folders get added again after completing 1 BackUp pass
+	//v1.6.6
+	- [Other]Shred context menu now requires confirmation
+	//v1.6.7
+	- [Other]File shredder 2nd pass now overwrites with random data instead of 0s
+	//v1.6.9
+	- [GUI]Moved Loading animation handler down a bit to avoid overlapping UI window border
+	- [GUI]Added tip for "Compress Data" option
+	TODO: (high to low priority)
+	- Option to choose number of passes for file shredder
+	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
+	- Option to put the files back where they originally were
+	- Generate html file to assist with restoration process
