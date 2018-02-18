@@ -21,18 +21,18 @@
 
 	Changelog:
 	//v1.1:
-	- Fixed "add files.." selection issue, strengthen derived password (v1.0 backups can't be retrieved with v1.1 or later)
+	- Fixed "add files.." selection issue, strengthened derived password (v1.0 backups can't be retrieved in v1.1 or later)
 	//v1.2:
 	- [GUI]Corrected "show password" and loading animation's position
 	- [List]Removed .txt requirement for lists, list names can't be empty, added option to purge all lists
 	- [Other]Added Purge Folders shell for FileShredder, option to Purge YourData restoration folder
 	//v1.3:
-	- [GUI] Modified "About"
-	- [List]Default folders are no longer de-selected when changing list, unchecked items are now saved
-	- [Script]Cleanup and added descriptions for future implementation and maintenance
+	- [GUI]Modified "About"
+	- [List]Default folders are no longer de-selected when changing between lists, unchecked items are now saved
+	- [Script]Cleanup and descriptions for future implementation and maintenance
 	//v1.3.5:
 	- [GUI]Fixed label resizing problem in backup step 3
-	- [List]Fixed new files added not auto-checking, fixed bug where default folders were not processed, added option to open file location
+	- [List]Fixed new files not auto-checking when added, fixed bug where default folders were not processed, added option to open file location
 	- [Script]Global array for default folders => less constant elements
 	//v1.3.7:
 	- [List]Fixed bug where switching between lists didn't display correctly, added browser data backup
@@ -46,7 +46,7 @@
 	//v1.4.8:
 	- [Encryption]Shortened derived password for better performance, added compression-free encryption
 	- [GUI]Corrected report area positioning, fixed various GUI bugs
-	- [Other]Some part of registry are purged during Windows activity wipe to remove traces
+	- [Other]Some parts of registry will be purged during Windows activity wipe to remove traces
 	//v1.5.0:
 	- [Encryption]Output containers are now named after profile name instead of "EncryptedContainer"
 	- [GUI]Cursor for Backup and Restore buttons
@@ -69,6 +69,9 @@
 	- [Other]Shred context menu now requires confirmation
 	//v1.6.7
 	- [Other]File shredder 2nd pass now overwrites with random data instead of 0s
+	//v1.6.9
+	- [GUI]Moved Loading animation handler down a bit to avoid overlapping UI window border
+	- [GUI]Added tip for "Compress Data" option
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
@@ -97,8 +100,8 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.6.7)
-#pragma compile(FileVersion, 1.6.7)
+#pragma compile(ProductVersion, 1.6.9)
+#pragma compile(FileVersion, 1.6.9)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, evorlet@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -143,7 +146,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.6.7"
+Global $g_sProgramVersion = "1.6.9"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
@@ -165,7 +168,7 @@ $GUI_MINIMIZE_BUTTON = $hGUIx[5]
 GUISetBkColor(0xFFFFFFFF, $hGUI)
 
 ;//Create global GUI elements that will be re-used through the stages
-$cPic = GUICtrlCreatePic("", 50, 0, $aGUIPos[2], $aGUIPos[2]);Loading Animation
+$cPic = GUICtrlCreatePic("", 50, 5, $aGUIPos[2], $aGUIPos[2]);Loading Animation
 GUICtrlSetResizing($cPic, 8 + 32 + 128 + 768)
 GUICtrlSetState($cPic, $GUI_HIDE)
 $btnNext = _Metro_CreateButtonEx($GUI_HOVER_REG, "Next", 314, 457, 70, 30, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
@@ -221,6 +224,7 @@ $ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 90, 18, 0x00
 $cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 230, 130)
 $hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 50)
 $cbBkUp3_Compress = GUICtrlCreateCheckbox("Compress data", 45, 298, 130)
+GUICtrlSetTip($cbBkUp3_Compress, "The process will take longer but the output file will be smaller.")
 
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
 GUICtrlSetState($cbBkUp3_ShowPwd, $bShowPwd)
