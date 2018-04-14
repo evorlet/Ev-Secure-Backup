@@ -53,6 +53,9 @@
 	//v1.6.9
 	- [GUI]Moved Loading animation handler down a bit to avoid overlapping UI window border
 	- [GUI]Added tip for "Compress Data" option
+	//v1.7.1
+	- [Script]Updated Metro library to v5.1
+	- [GUI]Applied Metro theme to context menus and message boxes
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
