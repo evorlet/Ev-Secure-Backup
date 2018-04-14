@@ -20,8 +20,8 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.7.1)
-#pragma compile(FileVersion, 1.7.1)
+#pragma compile(ProductVersion, 1.7.2)
+#pragma compile(FileVersion, 1.7.2)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, sandwichdoge@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -66,7 +66,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.7.1"
+Global $g_sProgramVersion = "1.7.2"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
@@ -83,7 +83,8 @@ $GUI_CLOSE_BUTTON = $hGUIControl[0]
 $GUI_MAXIMIZE_BUTTON = $hGUIControl[1]
 $GUI_RESTORE_BUTTON = $hGUIControl[2]
 $GUI_MINIMIZE_BUTTON = $hGUIControl[3]
-GUISetBkColor(0xFFFFFFFF, $hGUI)
+GUISetFont(9, 0, 0, "Segoe UI")
+
 
 ;//Create global GUI elements that will be re-used through the stages
 $cPic = GUICtrlCreatePic("", 50, 5, $aGUIPos[2], $aGUIPos[2]);Loading Animation
@@ -767,7 +768,7 @@ EndFunc   ;==>BkUp2_SelectList
 Func Restore2_Browse()
 	$sTemp = FileOpenDialog("Select encrypted container file", $g_sScriptDir, "All files (*.*)")
 	If Not $sTemp Then
-		If _Metro_MsgBox(4, $g_sProgramName, "No container file was selected, select a container folder instead?") = 6 Then $sTemp = FileSelectFolder("Select encrypted container folder", $g_sScriptDir)
+		If _Metro_MsgBox(4, $g_sProgramName, "No container file was selected, select a container folder instead?") = "Yes" Then $sTemp = FileSelectFolder("Select encrypted container folder", $g_sScriptDir)
 	EndIf
 	GUICtrlSetData($ipRestore2_ArchiveDir, $sTemp)
 EndFunc   ;==>Restore2_Browse
@@ -902,7 +903,7 @@ Func _PurgeListsCM()
 	For $i = 1 To UBound($g_aProfiles) - 1
 		$sTemp &= $g_aProfiles[$i] & @CRLF
 	Next
-	If _Metro_MsgBox(4, $g_sProgramName, "Are you sure you want to delete all saved data lists?" & @CRLF & $sTemp) = 6 Then;$MB_YES=6
+	If _Metro_MsgBox(4, $g_sProgramName, "Are you sure you want to delete all saved data lists?" & @CRLF & $sTemp) = "Yes" Then;$MB_YES=6
 		For $i = 0 To UBound($g_aProfiles) - 1
 			_FileShred($g_sScriptDir & "\ev_" & $g_aProfiles[$i])
 		Next
@@ -914,7 +915,7 @@ EndFunc   ;==>_PurgeListsCM
 
 Func _PurgeDataDirCM()
 	If FileExists($g_sScriptDir & "\YourData") Then
-		If _Metro_MsgBox(4, $g_sProgramName, "Are you sure you want to shred your recovery folder?" & @CRLF & "Size: " & Round(DirGetSize($g_sScriptDir & "\YourData") / 1024 / 1024, 2) & " Mb") = 6 Then; $MB_YES=6
+		If _Metro_MsgBox(4, $g_sProgramName, "Are you sure you want to shred your recovery folder?" & @CRLF & "Size: " & Round(DirGetSize($g_sScriptDir & "\YourData") / 1024 / 1024, 2) & " Mb") = "Yes" Then; $MB_YES=6
 			TrayTip($g_sProgramName, "Purging..", 5, 1)
 			_PurgeDir($g_sScriptDir & "\YourData")
 			DirRemove($g_sScriptDir & "\YourData", 1);Remove everything
@@ -927,7 +928,7 @@ EndFunc   ;==>_PurgeDataDirCM
 
 Func _PurgeRecentsCM()
 	Local $sLogPurged
-	If _Metro_MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/pinned items/jump lists in Windows." & @CRLF & @CRLF & "Proceed?") = 6 Then
+	If _Metro_MsgBox(4, $g_sProgramName, "This will clear all recently opened items/MRU/pinned items/jump lists in Windows." & @CRLF & @CRLF & "Proceed?") = "Yes" Then
 		TrayTip($g_sProgramName, "Shredding files, this may take a while..", 4, 1)
 		_PurgeDir(@AppDataDir & "\Microsoft\Windows\Recent")
 		_PurgeDir(@UserProfileDir & "\AppData\Local\Microsoft\Windows\INetCache\IE") ;Win10
@@ -937,7 +938,7 @@ Func _PurgeRecentsCM()
 		_PurgeDir(@UserProfileDir & "\AppData\Media Cache")
 		_PurgeRegCM()
 	EndIf
-	If _Metro_MsgBox(4, $g_sProgramName, "Clear event logs (requires Admin)?") = 6 Then
+	If _Metro_MsgBox(4, $g_sProgramName, "Clear event logs (requires Admin)?") = "Yes" Then
 		If IsAdmin() Then
 			$hEventLog = _EventLog__Open("", "Application")
 			_EventLog__Clear($hEventLog, "")
