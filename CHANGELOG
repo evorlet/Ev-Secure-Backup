@@ -56,6 +56,8 @@
 	//v1.7.1
 	- [Script]Updated Metro library to v5.1
 	- [GUI]Applied Metro theme to context menus and message boxes
+	//v1.7.2
+	- [Script]Fixed Metro message boxes with Yes/No confirmation
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
