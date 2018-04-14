@@ -23,12 +23,13 @@
 #pragma compile(ProductVersion, 1.6.9)
 #pragma compile(FileVersion, 1.6.9)
 #pragma compile(UPX, False)
-#pragma compile(LegalCopyright, evorlet@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
 _SetTheme("WhiteBlue")
 Global $g_sProgramName = "Ev-Secure Backup", $g_sScriptDir = @ScriptDir
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
+
+;//TODO: Add Metro theme for context menus
 
 ;//[Shred] cmd if called with parameter
 If $CmdLine[0] >= 1 Then
@@ -101,7 +102,7 @@ $btnOriginal_Backup = _Metro_CreateButtonEx($GUI_HOVER_REG, "Backup", 144, 170, 
 GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
 $btnOriginal_Restore = _Metro_CreateButtonEx($GUI_HOVER_REG, "Restore", 144, 260, 120, 60, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
-$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. evorlet@gmail.com", 245, 470)
+$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. sandwichdoge@gmail.com", 245, 470)
 
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
@@ -892,9 +893,9 @@ EndFunc   ;==>_AddShredderCM
 
 Func _AboutCM()
 	_Metro_MsgBox($g_sProgramName & " " & $g_sProgramVersion, "Gather your files in one place and encrypt them for easier and more secure backup." & @CRLF & @CRLF _
-			 & "2015 T.H. evorlet@gmail.com" & @CRLF _
+			 & "2015 T.H. sandwichdoge@gmail.com" & @CRLF _
 			 & "This software is open source and registered under GNU GPL." & @CRLF _
-			 & "<https://github.com/evorlet/Ev-Secure-Backup>")
+			 & "<https://github.com/sandwichdoge/Ev-Secure-Backup>")
 EndFunc   ;==>_AboutCM
 
 Func _PurgeListsCM()
