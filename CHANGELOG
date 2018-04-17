@@ -60,6 +60,11 @@
 	- [Script]Fixed Metro message boxes with Yes/No confirmation
 	//v1.7.3
 	- [GUI]Backup listview and restore input now accept drag and drop files properly.
+	//v1.8.0
+	- [GUI]Better icons & file size display for backup listview
+	- [GUI]You can now force exit while backup/restoration is in process
+	- [GUI]Added dark theme
+	
 	
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
