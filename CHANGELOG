@@ -58,6 +58,9 @@
 	- [GUI]Applied Metro theme to context menus and message boxes
 	//v1.7.2
 	- [Script]Fixed Metro message boxes with Yes/No confirmation
+	//v1.7.3
+	- [GUI]Backup listview and restore input now accept drag and drop files properly.
+	
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
