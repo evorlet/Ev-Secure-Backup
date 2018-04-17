@@ -21,13 +21,14 @@
 #include "MetroGUI_UDF.au3"
 
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.7.3)
-#pragma compile(FileVersion, 1.7.3)
+#pragma compile(ProductVersion, 1.8.0)
+#pragma compile(FileVersion, 1.8.0)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, sandwichdoge@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
 #pragma compile(FileDescription, Securely backup your data)
-_SetTheme("LightBlueCustom")
+
+
 Global $g_sProgramName = "Ev-Secure Backup", $g_sScriptDir = @ScriptDir
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 
@@ -58,17 +59,21 @@ Opt("TrayAutoPause", 0)
 Opt("TrayMenuMode", 3)
 Opt('TrayOnEventMode', 1)
 
-_GDIPlus_Startup()
+;_GDIPlus_Startup()
 _Crypt_Startup()
-Global Const $STM_SETIMAGE = 0x0172
+
 
 ;//Global vars declaration
+Global Const $STM_SETIMAGE = 0x0172
 
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
-Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
+Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.7.3"
+Global $g_sProgramVersion = "1.8.0"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
+
+$sTheme = IniRead($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "DarkTeal")
+_SetTheme($sTheme)
 
 ;//GUI elements declaration
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
@@ -79,13 +84,15 @@ Global $aGUIPos[] = [0, 0, 400, 500]
 ;//GUI creation
 
 $hGUI = _Metro_CreateGUI($g_sProgramName, 403, 500, -1, 100, True)
-$hGUIControl = _Metro_AddControlButtons(True,False,True,False,False)
+$hGUIControl = _Metro_AddControlButtons(True, False, True, False, True)
 $GUI_CLOSE_BUTTON = $hGUIControl[0]
 $GUI_MAXIMIZE_BUTTON = $hGUIControl[1]
 $GUI_RESTORE_BUTTON = $hGUIControl[2]
 $GUI_MINIMIZE_BUTTON = $hGUIControl[3]
+$GUI_MENU_BUTTON = $hGUIControl[6]
 GUISetFont(9, 0, 0, "Segoe UI")
 GUISetStyle($hGUI, $WS_EX_ACCEPTFILES)
+_Metro_SetGUIOption($hGUI, True, True, 400, 400)
 
 ;//Create global GUI elements that will be re-used through the stages
 $cPic = GUICtrlCreatePic("", 50, 5, $aGUIPos[2], $aGUIPos[2]);Loading Animation
@@ -102,7 +109,7 @@ GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
 $btnOriginal_Restore = _Metro_CreateButtonEx("Restore", 144, 260, 120, 60, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
 $lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. sandwichdoge@gmail.com", 195, 475)
-
+GUICtrlSetColor($lOriginal_Credit, $FontThemeColor)
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
 ;//Create stage-2 Backup GUI elements
@@ -111,6 +118,8 @@ _GUICtrlListView_SetExtendedListViewStyle($lvBkUp2_BackupList, BitOR($LVS_EX_FUL
 $nSizeColumn = _GUICtrlListView_AddColumn($lvBkUp2_BackupList, "Size")
 GUICtrlSetResizing($lvBkUp2_BackupList, 32 + 64 + 4 + 2);Centered+Poly
 GUICtrlSetState($lvBkUp2_BackupList, $GUI_DROPACCEPTED)
+GUICtrlSetBkColor(-1, $GUIThemeColor)
+GUICtrlSetColor(-1, $FontThemeColor)
 
 $sLastListUsed = IniRead("_Res\Settings.ini", "General", "LAST_USED_LIST", "MyNewList")
 If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
@@ -128,38 +137,51 @@ GUICtrlSetResizing($comboBkUp2_Profile, 768 + 64 + 8);HCentered
 
 ;//Create stage-3 Backup GUI elements
 $lBkUp3_Pwd = GUICtrlCreateLabel("Pick your Password:", 40, 130, 200)
-
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($lBkUp3_Pwd), "wstr", 0, "wstr", 0)
+GUICtrlSetColor($lBkUp3_Pwd, $FontThemeColor)
 $bShowPwd = IniRead($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", $GUI_UNCHECKED)
-$ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 150, $aGUIPos[2] - 90, 18)
+$ipBkUp3_Pwd = GUICtrlCreateInput("", 40, 150, $aGUIPos[2] - 90, 20)
 If $bShowPwd = $GUI_UNCHECKED Then GUICtrlSetStyle($ipBkUp3_Pwd, 0x0020)
 $lBkUp3_PwdConfirm = GUICtrlCreateLabel("Repeat your Password:", 40, 180, 200)
-$ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 90, 18, 0x0020)
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($lBkUp3_PwdConfirm), "wstr", 0, "wstr", 0)
+GUICtrlSetColor($lBkUp3_PwdConfirm, $FontThemeColor)
+$ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 90, 20, 0x0020)
 $cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 230, 130)
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($cbBkUp3_ShowPwd), "wstr", 0, "wstr", 0)
+GUICtrlSetColor(-1, $FontThemeColor)
 $hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 50)
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($hBkUp3_Settings), "wstr", 0, "wstr", 0)
+GUICtrlSetColor($hBkUp3_Settings, $FontThemeColor)
 $cbBkUp3_Compress = GUICtrlCreateCheckbox("Compress data", 45, 298, 130)
-GUICtrlSetTip($cbBkUp3_Compress, "The process will take longer but the output will be smaller. Output will be a folder.")
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($cbBkUp3_Compress), "wstr", 0, "wstr", 0)
+GUICtrlSetColor(-1, $FontThemeColor)
+GUICtrlSetTip($cbBkUp3_Compress, "The process will take longer but the output will be smaller. Output will be a single container file.")
 
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
 GUICtrlSetState($cbBkUp3_ShowPwd, $bShowPwd)
 
 ;//Create stage-4 Backup GUI elements
 $cbBkUp4_ShowEncryptedFile = GUICtrlCreateCheckbox("Show result file", 160, $aGUIPos[3] - 43)
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($cbBkUp4_ShowEncryptedFile), "wstr", 0, "wstr", 0)
+GUICtrlSetColor($cbBkUp4_ShowEncryptedFile, $FontThemeColor)
 GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_CHECKED)
 
 ;//Create stage-2 Restore GUI elements(first in Restore)
 $lRestore2_ArchiveDir = GUICtrlCreateLabel("Select container file/folder. Drag 'n Drop accepted.", 40, $aGUIPos[3] - 333, 300)
+GUICtrlSetColor(-1, $FontThemeColor)
 $ipRestore2_ArchiveDir = GUICtrlCreateInput("", 40, $aGUIPos[3] - 314, $aGUIPos[2] - 115, 20)
 GUICtrlSetState($ipRestore2_ArchiveDir, $GUI_DROPACCEPTED)
 $btnRestore2_Browse = _Metro_CreateButtonEx("...", $aGUIPos[2] - 72, $aGUIPos[3] - 314, 20, 20, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 
 ;//Create stage-3 Restore GUI elements
 $lRestore3_Pwd = GUICtrlCreateLabel("Enter the Password used during backup process", 40, $aGUIPos[3] - 333)
-$ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 93, 18)
+GUICtrlSetColor(-1, $FontThemeColor)
+$ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 93, 20)
 
 ;//Icons for BkUp2_ListView
 $hImage = _GUIImageList_Create(16, 16)
-_GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\File.bmp")
-_GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Folder.bmp")
+;_GUIImageList_AddIcon($hImage, $g_sScriptDir & "\_Res\File.ico")
+;_GUIImageList_AddIcon($hImage, $g_sScriptDir & "\_Res\Folder.ico")
 
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
 
@@ -180,8 +202,6 @@ _GUICtrlMenu_SetItemBmp(TrayItemGetHandle($hTrayMenuPurge), 1, _WinAPI_Create32B
 $hTrayPurgeLists = TrayCreateItem("All Windows activities", $hTrayMenuPurge)
 TrayItemSetOnEvent(-1, "_PurgeRecentsCM")
 _GUICtrlMenu_SetItemBmp(TrayItemGetHandle($hTrayMenuPurge), 2, _WinAPI_Create32BitHBITMAP(_WinAPI_ShellExtractIcon("_Res\windows.ico", 0, 16, 16), 1, 1))
-$hTrayAbout = TrayCreateItem("About")
-TrayItemSetOnEvent(-1, "_AboutCM")
 TrayCreateItem("")
 $hTrayExit = TrayCreateItem("Exit")
 TrayItemSetOnEvent(-1, "ExitS")
@@ -198,7 +218,6 @@ While 1
 WEnd
 
 Func _Interface()
-;	_Metro_HoverCheck_Loop($GUI_HOVER_REG, $hGUI);This hover check has to be added to the main While loop, otherwise hover effects won't work.
 	$msg = GUIGetMsg()
 	Switch $msg
 		Case $GUI_EVENT_DROPPED
@@ -212,9 +231,9 @@ Func _Interface()
 					$sPrefix = "De-"
 				Else
 					$sPrefix = ""
-				EndIf	
-				Local $MenuArray[5] = ["Open file location", "Add files..", "Add folder..", "Remove from list", $sPrefix & "Select All"]
-				Local $MenuSelect = _Metro_RightClickMenu($hGUI, 160, $MenuArray)
+				EndIf
+				Local $MenuButtonsArray[5] = ["Open file location", "Add files..", "Add folder..", "Remove from list", $sPrefix & "Select All"]
+				Local $MenuSelect = _Metro_RightClickMenu($hGUI, 160, $MenuButtonsArray)
 				Switch $MenuSelect
 					Case "0"
 						BkUp2_OpenFileLocation()
@@ -226,10 +245,31 @@ Func _Interface()
 						BkUp2_RemoveSelected()
 					Case "4"
 						BkUp2_SelectAllCM()
-				EndSwitch	
-			EndIf	
+				EndSwitch
+			EndIf
+		Case $GUI_MENU_BUTTON
+			If $sTheme = "LightBlueCustom" Then
+				$_sNewTheme = "Dark"
+			Else
+				$_sNewTheme = "Light"
+			EndIf
+			Local $MenuButtonsArray[5] = [$_sNewTheme & " Theme", "About", "Exit"]
+			Local $MenuSelect = _Metro_MenuStart($hGUI, 140, $MenuButtonsArray)
+			Switch $MenuSelect
+				Case "0"
+					If $sTheme = "LightBlueCustom" Then
+						IniWrite($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "DarkTeal")
+					Else
+						IniWrite($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "LightBlueCustom")
+					EndIf
+					_Metro_MsgBox(0, $g_sProgramName, "Theme change will take effect on the next startup.")
+				Case "1"
+					_AboutCM()
+				Case "2"
+					ExitS()
+			EndSwitch
 		Case $GUI_EVENT_CLOSE, $GUI_CLOSE_BUTTON
-			_Metro_GUIDelete($hGUI)			
+			_Metro_GUIDelete($hGUI)
 			Exit
 		Case $GUI_MINIMIZE_BUTTON
 			GUISetState(@SW_MINIMIZE)
@@ -343,7 +383,7 @@ Func Restore4()
 	;//Main step in restoration, retrieve files from encrypted container
 	Local $sReport
 	If Not GUICtrlRead($ipRestore3_Pwd) Then
-		_Metro_MsgBox(0, $g_sProgramName, "Please enter a Password.")
+		_Metro_MsgBox(0, $g_sProgramName, "Please enter the Password you used for encryption.")
 		Return
 	EndIf
 	
@@ -361,6 +401,8 @@ Func Restore4()
 	GUICtrlSetState($btnNext, $GUI_DISABLE)
 	
 	$sContainerPath = GUICtrlRead($ipRestore2_ArchiveDir)
+	Opt("GUIOnEventMode", 1)
+	GUICtrlSetOnEvent($GUI_CLOSE_BUTTON, "ExitS")
 	;//Decrypt
 	$aGUIPos = WinGetPos($hGUI)
 	$lRestore4_Status = GUICtrlCreateLabel("", ($aGUIPos[2] / 2) - 120, $aGUIPos[3] - 233, 280, 30, BitOR(0x0200, 0x01))
@@ -399,9 +441,10 @@ Func Restore4()
 	$sReport &= "Restoration finished." & @CRLF
 	_Crypt_DestroyKey($hKey)
 	;//Remaining GUI stuff
+	Opt("GUIOnEventMode", 0)
 	GUICtrlSetData($lRestore4_Status, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
-	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2] - 30, 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
+	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2] - 10, 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	GUICtrlSetState($btnNext, $GUI_ENABLE)
 	_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
@@ -540,6 +583,7 @@ Func ToBkUp4()
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", GUICtrlRead($cbBkUp3_ShowPwd))
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "COMPRESS_DATA", GUICtrlRead($cbBkUp3_Compress))
 	HideAllControls(True)
+	GUICtrlSetState($GUI_MINIMIZE_BUTTON, $GUI_HIDE);//To not overlap loading screen
 	GUICtrlSetState($cPic, $GUI_SHOW)
 	GUIRegisterMsg($WM_TIMER, "PlayAnim")
 	GUICtrlSetState($btnNext, $GUI_SHOW)
@@ -548,6 +592,7 @@ Func ToBkUp4()
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
 	$lBkUp4_Status = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 120, $aCtrlPos[0], 24, BitOR(0x0200, 0x01))
 	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 95, $aCtrlPos[0], 20, BitOR(0x0200, 0x01))
+	GUICtrlSetColor(-1, $FontThemeColor)
 	If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then;Use Zip encryption
 		$g_LoadingText = "Compressing"
 		$sReport &= "Compressing your data.." & @CRLF
@@ -559,13 +604,15 @@ Func ToBkUp4()
 		GUICtrlSetState($btnNext, $GUI_DISABLE)
 		$sTempZip = $g_sScriptDir & "\_temp.zip"
 		_Zip_Create($sTempZip, 1)
-		AdlibRegister("HideCompressing", 20) ;// Workaround to hide "Compressing" popup windows
+		AdlibRegister("HideCompressing", 30) ;// Workaround to hide "Compressing" popup windows
 		For $i = 0 To 20
 			Sleep(200)
 			If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 		Next
+		Opt("GUIOnEventMode", 1)
+		GUICtrlSetOnEvent($GUI_CLOSE_BUTTON, "ExitS")
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Process all backup items read from listview
-			If Mod($i, 8) = 0 Then Sleep(300) ;Take a break every 8 items processed
+			If Mod($i, 8) = 0 Then Sleep(200) ;Take a break every 8 items processed
 			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
 			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToCompress)
 			If Not FileExists($sFileToCompress) Then
@@ -607,6 +654,8 @@ Func ToBkUp4()
 			Next
 		EndIf
 		_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\" & $sContainerName, $hKey, $CALG_USERKEY)
+		GUICtrlSetState($GUI_MINIMIZE_BUTTON, $GUI_SHOW)
+		Opt("GUIOnEventMode", 0)
 		If @error Then
 			$sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
 		Else
@@ -638,7 +687,7 @@ Func ToBkUp4()
 	GUICtrlSetData($lBkUp4_CurrentFile, "")
 	GUICtrlSetData($lBkUp4_Status, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
-	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2], 200, BitOR($WS_VSCROLL, $ES_READONLY))
+	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2] - 10, 200, BitOR($WS_VSCROLL, $ES_READONLY))
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	;_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
 	GUICtrlSetState($cPic, $GUI_HIDE)
@@ -718,19 +767,25 @@ Func BkUp2_AddFolder()
 EndFunc   ;==>BkUp2_AddFolder
 
 Func BkUp2_RemoveSelected()
-	Local $count, $nItemSelected
+	Local $count, $nItemSelected, $o
 	_GUICtrlListView_BeginUpdate($lvBkUp2_BackupList)
 	$nItemSelected = _GUICtrlListView_GetSelectedIndices($lvBkUp2_BackupList)
 	If $nItemSelected <> "" Then; //If there's highlighted item, delete it instead of all checked items
 		_GUICtrlListView_DeleteItemsSelected($lvBkUp2_BackupList)
 	Else; 						  //Else delete all checked items
-		For $i = 0 To _GUICtrlListView_GetItemCount($lvBkUp2_BackupList) - 1
-			If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $count) = True Then
-				_GUICtrlListView_DeleteItem($lvBkUp2_BackupList, $count)
-				$count -= 1
-			EndIf
-			$count += 1
+		$_nItemCount = _GUICtrlListView_GetItemCount($lvBkUp2_BackupList) - 1
+		For $i = 0 To $_nItemCount
+			If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $i) = True Then $o += 1
 		Next
+		If _Metro_MsgBox(4, $g_sProgramName, "Remove " & $o & " selected items from list?") = "Yes" Then
+			For $i = 0 To $_nItemCount
+				If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $count) = True Then
+					_GUICtrlListView_DeleteItem($lvBkUp2_BackupList, $count)
+					$count -= 1
+				EndIf
+				$count += 1
+			Next
+		EndIf
 	EndIf
 	_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
 EndFunc   ;==>BkUp2_RemoveSelected
@@ -833,27 +888,29 @@ Func _AddDefaultFoldersToLV($hWnd)
 	#ce
 	If FileExists(@UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default") Then
 		;//Back up Chrome data
-		If _ArraySearch($g_aDefaultItems, "Chrome History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\History|\_Res\Chrome.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chrome Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Bookmarks|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Bookmarks|\_Res\Chrome.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Passwords|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Login Data|\_Res\Chrome.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chrome History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome History|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\History|\_Res\Chrome.ico")
+		If _ArraySearch($g_aDefaultItems, "Chrome Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Bookmarks|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Bookmarks|\_Res\Chrome.ico")
+		If _ArraySearch($g_aDefaultItems, "Chrome Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chrome Passwords|" & @UserProfileDir & "\AppData\Local\Google\Chrome\User Data\Default\Login Data|\_Res\Chrome.ico")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Chromium\User Data\Default") Then
 		;//Back up Chromium data
-		If _ArraySearch($g_aDefaultItems, "Chromium History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\History|\_Res\Chromium.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chromium Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium Bookmarks|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Bookmarks|\_Res\Chromium.bmp")
-		If _ArraySearch($g_aDefaultItems, "Chromium Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium Passwords|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Login Data|\_Res\Chromium.bmp")
+		If _ArraySearch($g_aDefaultItems, "Chromium History") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium History|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\History|\_Res\Chromium.ico")
+		If _ArraySearch($g_aDefaultItems, "Chromium Bookmarks") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium Bookmarks|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Bookmarks|\_Res\Chromium.ico")
+		If _ArraySearch($g_aDefaultItems, "Chromium Passwords") = -1 Then _ArrayAdd($g_aDefaultItems, "Chromium Passwords|" & @UserProfileDir & "\AppData\Local\Chromium\User Data\Default\Login Data|\_Res\Chromium.ico")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Mozilla\Firefox\Profiles") Then
 		;//Back up Firefox data
-		If _ArraySearch($g_aDefaultItems, "Firefox Data") = -1 Then _ArrayAdd($g_aDefaultItems, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.bmp")
+		If _ArraySearch($g_aDefaultItems, "Firefox Data") = -1 Then _ArrayAdd($g_aDefaultItems, "Firefox Data|" & @UserProfileDir & "\AppData\Roaming\Mozilla\Firefox\Profiles|\_Res\Firefox.ico")
 	EndIf
 	If FileExists(@UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable") Then
 		;//Back up Opera data
 		If _ArraySearch($g_aDefaultItems, "Opera Data") = -1 Then _ArrayAdd($g_aDefaultItems, "Opera Data|" & @UserProfileDir & "\AppData\Local\Roaming\Opera Software\Opera Stable|\_Res\Opera.bmp")
 	EndIf
 	_GUICtrlListView_BeginUpdate($hWnd)
+	_GUIImageList_AddIcon($hImage, $g_sScriptDir & "\_Res\File.ico")
+	_GUIImageList_AddIcon($hImage, $g_sScriptDir & "\_Res\Folder.ico")
 	For $i = 0 To UBound($g_aDefaultItems) - 1
-		_GUIImageList_AddBitmap($hImage, $g_sScriptDir & $g_aDefaultItems[$i][2])
+		_GUIImageList_AddIcon($hImage, $g_sScriptDir & $g_aDefaultItems[$i][2])
 		_GUICtrlListView_AddItem($hWnd, $g_aDefaultItems[$i][0], $i + 2)
 		If StringInStr(FileGetAttrib($g_aDefaultItems[$i][1]), "D") Then
 			$nItemSize = _GetItemSizeString($g_aDefaultItems[$i][1])
@@ -878,8 +935,10 @@ Func _GetItemSizeString($sItemPath)
 	EndIf
 	If $nRawItemSize / 1024 / 1024 < 1 Then;//Under 1Mb -> Return Kb
 		$nItemSize = Round($nRawItemSize / 1024, 1) & "KB"
-	Else
+	ElseIf $nRawItemSize / 1024 / 1024 / 1024 < 1 Then
 		$nItemSize = Round($nRawItemSize / 1024 / 1024, 1) & "MB"
+	Else
+		$nItemSize = Round($nRawItemSize / 1024 / 1024 / 1024, 1) & "GB"
 	EndIf
 	Return $nItemSize
 EndFunc   ;==>_GetItemSizeString
@@ -1092,6 +1151,7 @@ EndFunc   ;==>_PathStringSplit
 Func HideCompressing();Hide pop-up compressing window when archiving w/ ZIP
 	If BitAND(WinGetState("Compressing"), 2) = 2 Then
 		WinSetState("Compressing", "", @SW_HIDE)
+		Sleep(1000)
 	EndIf
 EndFunc   ;==>HideCompressing
 
@@ -1128,10 +1188,12 @@ EndFunc   ;==>PlayAnim
 Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana", $bHBitmap = True)
 	Local Const $hBitmap = _GDIPlus_BitmapCreateFromScan0($iW, $iH)
 	Local Const $hGfx = _GDIPlus_ImageGetGraphicsContext($hBitmap)
+	Local $sGUIThemeColor = "0xFF" & StringRight($GUIThemeColor, 6)
+	
 	_GDIPlus_GraphicsSetSmoothingMode($hGfx, 4 + (@OSBuild > 5999))
 	_GDIPlus_GraphicsSetTextRenderingHint($hGfx, 3)
 	_GDIPlus_GraphicsSetPixelOffsetMode($hGfx, $GDIP_PIXELOFFSETMODE_HIGHQUALITY)
-	_GDIPlus_GraphicsClear($hGfx, 0xFFF5F5F5)
+	_GDIPlus_GraphicsClear($hGfx, $sGUIThemeColor)
 
 	Local $iRadius = ($iW > $iH) ? $iH * 0.6 : $iW * 0.6
 
@@ -1139,7 +1201,7 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	_GDIPlus_PathAddEllipse($hPath, ($iW - ($iRadius + 24)) / 2, ($iH - ($iRadius + 24)) / 2, $iRadius + 24, $iRadius + 24)
 
 	Local $hBrush = _GDIPlus_PathBrushCreateFromPath($hPath)
-	_GDIPlus_PathBrushSetCenterColor($hBrush, 0xFFFFFFFF)
+	_GDIPlus_PathBrushSetCenterColor($hBrush, $sGUIThemeColor)
 	_GDIPlus_PathBrushSetSurroundColor($hBrush, 0x08F5F5F5)
 	_GDIPlus_PathBrushSetGammaCorrection($hBrush, True)
 
@@ -1158,7 +1220,7 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	_GDIPlus_PathDispose($hPath)
 	_GDIPlus_BrushDispose($hBrush)
 
-	Local Const $hBrush_Gray = _GDIPlus_BrushCreateSolid(0xFFF5F5F5)
+	Local Const $hBrush_Gray = _GDIPlus_BrushCreateSolid("0xFF" & StringRight($GUIThemeColor, 6))
 	_GDIPlus_GraphicsFillEllipse($hGfx, ($iW - ($iRadius + 10)) / 2, ($iH - ($iRadius + 10)) / 2, $iRadius + 10, $iRadius + 10, $hBrush_Gray)
 
 	Local Const $hBitmap_Gradient = _GDIPlus_BitmapCreateFromScan0($iRadius, $iRadius)
@@ -1183,11 +1245,11 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	_GDIPlus_MatrixDispose($hMatrix)
 
 	Local Const $hFormat = _GDIPlus_StringFormatCreate()
-    Local Const $hFamily = _GDIPlus_FontFamilyCreate($sFont)
-    Local Const $hFont = _GDIPlus_FontCreate($hFamily, $iRadius / 10)
+	Local Const $hFamily = _GDIPlus_FontFamilyCreate($sFont)
+	Local Const $hFont = _GDIPlus_FontCreate($hFamily, $iRadius / 10)
 	_GDIPlus_StringFormatSetAlign($hFormat, 1)
 	_GDIPlus_StringFormatSetLineAlign($hFormat, 1)
-    Local $tLayout = _GDIPlus_RectFCreate(0, 0, $iW, $iH)
+	Local $tLayout = _GDIPlus_RectFCreate(0, 0, $iW, $iH)
 	Local Static $iColor = 0x00, $iDir = 13
 	Local $hBrush_txt = _GDIPlus_BrushCreateSolid(0xFF000000 + 0x010000 * $iColor + 0x0100 * $iColor + $iColor)
 	_GDIPlus_GraphicsDrawStringEx($hGfx, $sText, $hFont, $tLayout, $hFormat, $hBrush_txt)
@@ -1200,9 +1262,9 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 		$iColor = 0x16
 	EndIf
 	_GDIPlus_BrushDispose($hBrush_txt)
-    _GDIPlus_FontDispose($hFont)
-    _GDIPlus_FontFamilyDispose($hFamily)
-    _GDIPlus_StringFormatDispose($hFormat)
+	_GDIPlus_FontDispose($hFont)
+	_GDIPlus_FontFamilyDispose($hFamily)
+	_GDIPlus_StringFormatDispose($hFormat)
 	_GDIPlus_GraphicsDispose($hGfx)
 
 	If $bHBitmap Then
@@ -1211,7 +1273,7 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 		Return $hHBITMAP
 	EndIf
 	Return $hBitmap
-EndFunc
+EndFunc   ;==>_GDIPlus_MultiColorLoader
 Func _FileWriteAccessible($sFile)
 	; Returns
 	;            1 = Success, file is writeable and deletable
