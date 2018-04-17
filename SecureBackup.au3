@@ -19,9 +19,10 @@
 #include <EventLog.au3>
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
+
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.7.2)
-#pragma compile(FileVersion, 1.7.2)
+#pragma compile(ProductVersion, 1.7.3)
+#pragma compile(FileVersion, 1.7.3)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, sandwichdoge@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -66,7 +67,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.bmp"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.bmp"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.bmp"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.bmp"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.7.2"
+Global $g_sProgramVersion = "1.7.3"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 ;//GUI elements declaration
@@ -78,13 +79,13 @@ Global $aGUIPos[] = [0, 0, 400, 500]
 ;//GUI creation
 
 $hGUI = _Metro_CreateGUI($g_sProgramName, 403, 500, -1, 100, True)
-$hGUIControl = _Metro_AddControlButtons(True,True,True,False,False)
+$hGUIControl = _Metro_AddControlButtons(True,False,True,False,False)
 $GUI_CLOSE_BUTTON = $hGUIControl[0]
 $GUI_MAXIMIZE_BUTTON = $hGUIControl[1]
 $GUI_RESTORE_BUTTON = $hGUIControl[2]
 $GUI_MINIMIZE_BUTTON = $hGUIControl[3]
 GUISetFont(9, 0, 0, "Segoe UI")
-
+GUISetStyle($hGUI, $WS_EX_ACCEPTFILES)
 
 ;//Create global GUI elements that will be re-used through the stages
 $cPic = GUICtrlCreatePic("", 50, 5, $aGUIPos[2], $aGUIPos[2]);Loading Animation
@@ -100,7 +101,7 @@ $btnOriginal_Backup = _Metro_CreateButtonEx("Backup", 144, 170, 120, 60, $Button
 GUICtrlSetResizing($btnOriginal_Backup, 8 + 128 + 768);Centered
 $btnOriginal_Restore = _Metro_CreateButtonEx("Restore", 144, 260, 120, 60, $ButtonBKColor, $ButtonTextColor, "Segoe UI", 11)
 GUICtrlSetResizing($btnOriginal_Restore, 8 + 128 + 768);Centered
-$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. sandwichdoge@gmail.com", 215, 475)
+$lOriginal_Credit = GUICtrlCreateLabel("2015 T.H. sandwichdoge@gmail.com", 195, 475)
 
 GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 
@@ -109,11 +110,11 @@ $lvBkUp2_BackupList = GUICtrlCreateListView("File", 15, 40, $aGUIPos[2] - 27, $a
 _GUICtrlListView_SetExtendedListViewStyle($lvBkUp2_BackupList, BitOR($LVS_EX_FULLROWSELECT, $LVS_EX_CHECKBOXES))
 $nSizeColumn = _GUICtrlListView_AddColumn($lvBkUp2_BackupList, "Size")
 GUICtrlSetResizing($lvBkUp2_BackupList, 32 + 64 + 4 + 2);Centered+Poly
-
+GUICtrlSetState($lvBkUp2_BackupList, $GUI_DROPACCEPTED)
 
 $sLastListUsed = IniRead("_Res\Settings.ini", "General", "LAST_USED_LIST", "MyNewList")
 If Not FileExists("ev_" & $sLastListUsed) Then $sLastListUsed = "MyNewList"
-$comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 145, $aGUIPos[3] - 38, 120)
+$comboBkUp2_Profile = GUICtrlCreateCombo($sLastListUsed, 135, $aGUIPos[3] - 38, 140)
 GUICtrlSetTip($comboBkUp2_Profile, "Select your list, new list will be created if list does not exist.")
 $hListFileSearch = FileFindFirstFile("ev_*")
 For $i = 0 To 50;Maximum 50 profiles are registered.
@@ -136,7 +137,7 @@ $ipBkUp3_PwdConfirm = GUICtrlCreateInput("", 40, 200, $aGUIPos[2] - 90, 18, 0x00
 $cbBkUp3_ShowPwd = GUICtrlCreateCheckbox("Show Password", 40, 230, 130)
 $hBkUp3_Settings = GUICtrlCreateGroup("Settings", 30, 280, $aGUIPos[2] - 80, 50)
 $cbBkUp3_Compress = GUICtrlCreateCheckbox("Compress data", 45, 298, 130)
-GUICtrlSetTip($cbBkUp3_Compress, "The process will take longer but the output file will be smaller.")
+GUICtrlSetTip($cbBkUp3_Compress, "The process will take longer but the output will be smaller. Output will be a folder.")
 
 GUICtrlSetResizing($cbBkUp3_ShowPwd, 1)
 GUICtrlSetState($cbBkUp3_ShowPwd, $bShowPwd)
@@ -161,6 +162,7 @@ _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\File.bmp")
 _GUIImageList_AddBitmap($hImage, $g_sScriptDir & "\_Res\Folder.bmp")
 
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
+
 
 ;#End of GUI creation
 
@@ -199,10 +201,14 @@ Func _Interface()
 ;	_Metro_HoverCheck_Loop($GUI_HOVER_REG, $hGUI);This hover check has to be added to the main While loop, otherwise hover effects won't work.
 	$msg = GUIGetMsg()
 	Switch $msg
+		Case $GUI_EVENT_DROPPED
+			$sFile = @GUI_DragFile
+			Local $aFileToAdd[] = [$sFile]
+			_AddFilesToLV($lvBkUp2_BackupList, $aFileToAdd)
 		Case $GUI_EVENT_SECONDARYDOWN
 			$aCursorInfo = GUIGetCursorInfo($hGUI)
 			If $aCursorInfo[4] = $lvBkUp2_BackupList Then
-				If $g_bSelectAll = True Then 
+				If $g_bSelectAll = True Then
 					$sPrefix = "De-"
 				Else
 					$sPrefix = ""
@@ -223,7 +229,7 @@ Func _Interface()
 				EndSwitch	
 			EndIf	
 		Case $GUI_EVENT_CLOSE, $GUI_CLOSE_BUTTON
-					_Metro_GUIDelete($hGUI)			
+			_Metro_GUIDelete($hGUI)			
 			Exit
 		Case $GUI_MINIMIZE_BUTTON
 			GUISetState(@SW_MINIMIZE)
@@ -1106,6 +1112,7 @@ EndFunc   ;==>SpecialEvents
 Func ExitS()
 	If FileExists($g_sScriptDir & "\_temp.zip") Then _FileShred($g_sScriptDir & "\_temp.zip");Clean up
 	_Crypt_Shutdown()
+	_GDIPlus_Shutdown()
 	Exit
 EndFunc   ;==>ExitS
 
