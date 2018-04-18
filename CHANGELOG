@@ -64,7 +64,10 @@
 	- [GUI]Better icons & file size display for backup listview
 	- [GUI]You can now force exit while backup/restoration is in process
 	- [GUI]Added dark theme
-	
+	//v1.8.1
+	- [GUI]Fixed all missing texts in encryption loading screen + Drag 'n drop listview bug
+	- [Script]Password variables are now freed immediately after completion for better security
+	- [Script]File shredder now changes file's created/accessed/modified time + smarter confirmation prompt
 	
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
