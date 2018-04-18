@@ -21,8 +21,8 @@
 #include "MetroGUI_UDF.au3"
 
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.8.0)
-#pragma compile(FileVersion, 1.8.0)
+#pragma compile(ProductVersion, 1.8.1)
+#pragma compile(FileVersion, 1.8.1)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, sandwichdoge@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -35,18 +35,17 @@ If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_s
 ;//[Shred] cmd if called with parameter
 If $CmdLine[0] >= 1 Then
 	If StringRegExp($CmdLineRaw, "/shred") Then
-		If MsgBox(64 + 4, "EvShred", "Shred data?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then
-			If StringRegExp($CmdLine[1], "\\") Then
-				If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
-					If _FileWriteAccessible($CmdLine[1]) = 1 Then
-						_FileShred($CmdLine[1])
-					Else
-						If Not IsAdmin() Then ShellExecute(@AutoItExe, $CmdLine[1] & " /shred", "", "runas")
-					EndIf
-				Else
-					_PurgeDir($CmdLine[1])
-					DirRemove($CmdLine[1], 1)
+		If StringRegExp($CmdLine[1], "\\") Then
+			FileSetAttrib($CmdLine[1], "-RS")
+			If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
+				If _FileWriteAccessible($CmdLine[1]) = 1 Then
+					If MsgBox(64 + 4, "EvShred", "Shred data?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then _FileShred($CmdLine[1])
+				ElseIf Not IsAdmin() Then
+					ShellExecute(@AutoItExe, $CmdLine[1] & " /shred", "", "runas")
 				EndIf
+			Else
+				_PurgeDir($CmdLine[1])
+				DirRemove($CmdLine[1], 1)
 			EndIf
 		EndIf
 	ElseIf $CmdLineRaw = "/add" Then
@@ -69,7 +68,7 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.8.0"
+Global $g_sProgramVersion = "1.8.1"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 
 $sTheme = IniRead($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "DarkTeal")
@@ -116,6 +115,7 @@ GUICtrlSetResizing($lOriginal_Credit, 4 + 768);DockRight+ConstantSize
 $lvBkUp2_BackupList = GUICtrlCreateListView("File", 15, 40, $aGUIPos[2] - 27, $aGUIPos[3] - 95)
 _GUICtrlListView_SetExtendedListViewStyle($lvBkUp2_BackupList, BitOR($LVS_EX_FULLROWSELECT, $LVS_EX_CHECKBOXES))
 $nSizeColumn = _GUICtrlListView_AddColumn($lvBkUp2_BackupList, "Size")
+DllCall("UxTheme.dll", "int", "SetWindowTheme", "hwnd", GUICtrlGetHandle($lvBkUp2_BackupList), "wstr", 0, "wstr", 0)
 GUICtrlSetResizing($lvBkUp2_BackupList, 32 + 64 + 4 + 2);Centered+Poly
 GUICtrlSetState($lvBkUp2_BackupList, $GUI_DROPACCEPTED)
 GUICtrlSetBkColor(-1, $GUIThemeColor)
@@ -221,9 +221,11 @@ Func _Interface()
 	$msg = GUIGetMsg()
 	Switch $msg
 		Case $GUI_EVENT_DROPPED
-			$sFile = @GUI_DragFile
-			Local $aFileToAdd[] = [$sFile]
-			_AddFilesToLV($lvBkUp2_BackupList, $aFileToAdd)
+			If @GUI_DropId = 16 Then;//Drag destination is bkup listview
+				$sFile = @GUI_DragFile
+				Local $aFileToAdd[] = [$sFile]
+				_AddFilesToLV($lvBkUp2_BackupList, $aFileToAdd)
+			EndIf
 		Case $GUI_EVENT_SECONDARYDOWN
 			$aCursorInfo = GUIGetCursorInfo($hGUI)
 			If $aCursorInfo[4] = $lvBkUp2_BackupList Then
@@ -391,9 +393,11 @@ Func Restore4()
 	$sTempZip = $g_sScriptDir & "\_temp.zip"
 	$sTempDir = $g_sScriptDir & "\YourData"
 	$sPwd = GUICtrlRead($ipRestore3_Pwd)
-	$sPwdHashed = _DerivePwd($sPwd)
+	$sPwdHashed = _ObfuscatePwd($sPwd)
 	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
-
+	$sPwd = "" ;//Overwrite variable in RAM for security reason.
+	$sPwdHashed = "";//Not 100% positive this would always work.
+	
 	HideAllControls(False)
 	GUICtrlSetState($cPic, $GUI_SHOW)
 	GUIRegisterMsg($WM_TIMER, "PlayAnim");//Show and play loading animation
@@ -411,6 +415,7 @@ Func Restore4()
 	$sReport &= "Decrypting container.." & @CRLF
 	
 	If StringRegExp(FileGetAttrib($sContainerPath), "D") Then ;//Container is folder, therefore wasn't compressed.
+		$g_LoadingText = "Decrypting"
 		_Crypt_DecryptFolder($sContainerPath, $g_sScriptDir & "\YourData", $hKey, $CALG_USERKEY)
 	Else
 		If FileExists("_temp.zip") Then _FileShred($sTempZip)
@@ -432,6 +437,7 @@ Func Restore4()
 				$sReport &= "Everything extracted to " & $sTempDir & @CRLF
 				$sReport &= "Shredding leftovers.." & @CRLF
 			EndIf
+			$g_LoadingText = "Cleaning"
 			_FileShred($sTempZip)
 		Else
 			$sTemp = $iError
@@ -447,7 +453,6 @@ Func Restore4()
 	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2] - 10, 200, BitOR($WS_VSCROLL, $ES_READONLY));//This control is deleted in step 5
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	GUICtrlSetState($btnNext, $GUI_ENABLE)
-	_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
 	GUICtrlSetState($cPic, $GUI_HIDE)
 	GUIRegisterMsg($WM_TIMER, "")
 	
@@ -456,7 +461,6 @@ EndFunc   ;==>Restore4
 
 Func Restore5()
 	GUICtrlDelete($eReport)
-	_GUICtrlButton_SetImage($btnNext, $g_sScriptDir & "\_Res\Next.bmp")
 	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then _WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\YourData")
 	$sState = "R5"
 	ToOriginal()
@@ -587,10 +591,12 @@ Func ToBkUp4()
 	GUICtrlSetState($cPic, $GUI_SHOW)
 	GUIRegisterMsg($WM_TIMER, "PlayAnim")
 	GUICtrlSetState($btnNext, $GUI_SHOW)
-	$sPwdHashed = _DerivePwd($sPwd)
+	$sPwdHashed = _ObfuscatePwd($sPwd)
 	$hKey = _Crypt_DeriveKey($sPwdHashed, $CALG_AES_256)
+	$sPwd = "" ;//Overwrite variable in RAM for security reason.
+	$sPwdHashed = "";//Not 100% positive this would always work.
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
-	$lBkUp4_Status = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 120, $aCtrlPos[0], 24, BitOR(0x0200, 0x01))
+	$lBkUp4_Status = 0;GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 120, $aCtrlPos[0], 24, BitOR(0x0200, 0x01))
 	$lBkUp4_CurrentFile = GUICtrlCreateLabel("", 50, $aCtrlPos[1] - 95, $aCtrlPos[0], 20, BitOR(0x0200, 0x01))
 	GUICtrlSetColor(-1, $FontThemeColor)
 	If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then;Use Zip encryption
@@ -664,10 +670,10 @@ Func ToBkUp4()
 			$sReport &= "File saved to " & $g_sScriptDir & "\" & $sContainerName & @CRLF
 		EndIf
 	Else ;//No compression, only encrypt files/folders
+		$g_LoadingText = "Encrypting"
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1
 			_Interface()
 			$sFileToEncrypt = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
-			GUICtrlSetData($lBkUp4_Status, "Encrypting your data..")
 			GUICtrlSetData($lBkUp4_CurrentFile, $sFileToEncrypt)
 			$aTemp = StringRegExp($sFileToEncrypt, "^(.*\\)(.*)$", 3)
 			If StringRegExp(FileGetAttrib($sFileToEncrypt), "D") Then
@@ -685,7 +691,6 @@ Func ToBkUp4()
 	EndIf
 	_Crypt_DestroyKey($hKey)
 	GUICtrlSetData($lBkUp4_CurrentFile, "")
-	GUICtrlSetData($lBkUp4_Status, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
 	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2] - 10, 200, BitOR($WS_VSCROLL, $ES_READONLY))
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
@@ -1075,8 +1080,8 @@ EndFunc   ;==>_RandomData
 
 Func _FileShred($sFilePath)
 	Local $aFilePath, $iSiz, $sChr = ""
-	Local Static $sChrN = Chr(48)
-	If StringRegExp(FileGetAttrib($sFilePath), "(R)") Then FileSetAttrib($sFilePath, "-R"); RegEx is faster than StringInStr()
+	Local Static $sChrN = 0
+	If StringRegExp(FileGetAttrib($sFilePath), "R") Then FileSetAttrib($sFilePath, "-R"); RegEx is faster than StringInStr()
 	$aFilePath = StringRegExp($sFilePath, "^(.*\\)(.*)$", 3)
 	If Not IsArray($aFilePath) Then Return
 	If FileGetSize($sFilePath) <= 1024 Then
@@ -1094,18 +1099,20 @@ Func _FileShred($sFilePath)
 	For $i = 1 To $iSiz
 		FileWrite($hFileToShred, $sChr)
 	Next
-	FileClose($hFileToShred)
 	
 	;2nd pass - write random data
-	$hFileToShred = FileOpen($sFilePath, 18)
-	$sChr = _RandomData(1024)
+	FileSetPos($hFileToShred, 0, 0)
+	$sChr2 = _RandomData(1024)
 	For $i = 1 To $iSiz
-		FileWrite($hFileToShred, $sChr)
+		FileWrite($hFileToShred, $sChr2)
 	Next
 	FileClose($hFileToShred)
 	
 	_FileRename($sFilePath, $aFilePath[0] & "0000000000000000000000000000000")
 	$sFilePath = $aFilePath[0] & "0000000000000000000000000000000"
+	For $i = 0 To 2
+		FileSetTime($sFilePath, "20000101", $i);//Change file's created/accessed/modified time to y2k.
+	Next
 	FileDelete($sFilePath)
 EndFunc   ;==>_FileShred
 Func _FileRename($FileName, $ReName)
@@ -1127,7 +1134,7 @@ Func _FileRename($FileName, $ReName)
 	DllStructSetData($SHFILEOPSTRUCT, "fAnyOperationsAborted", $NULL)
 	DllStructSetData($SHFILEOPSTRUCT, "hNameMappings", $NULL)
 	DllStructSetData($SHFILEOPSTRUCT, "lpszProgressTitle", $NULL)
-	$acall = DllCall("shell32.dll", "int", "SHFileOperation", "ptr", DllStructGetPtr($SHFILEOPSTRUCT))
+	$aCall = DllCall("shell32.dll", "int", "SHFileOperation", "ptr", DllStructGetPtr($SHFILEOPSTRUCT))
 	If @error Then
 		Return SetError(@error, @extended, 0)
 	EndIf
@@ -1155,12 +1162,12 @@ Func HideCompressing();Hide pop-up compressing window when archiving w/ ZIP
 	EndIf
 EndFunc   ;==>HideCompressing
 
-Func _DerivePwd($sPwdToDerive);//Make user pwd longer
+Func _ObfuscatePwd($sPwdToDerive);//Make user pwd longer
 	Local $sResult
 	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2)
 	$sResult &= StringReverse($sResult)
 	Return $sResult
-EndFunc   ;==>_DerivePwd
+EndFunc   ;==>_ObfuscatePwd
 
 Func SpecialEvents();//Handling default GUI events
 	Select
