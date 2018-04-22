@@ -68,6 +68,10 @@
 	- [GUI]Fixed all missing texts in encryption loading screen + Drag 'n drop listview bug
 	- [Script]Password variables are now freed immediately after completion for better security
 	- [Script]File shredder now changes file's created/accessed/modified time + smarter confirmation prompt
+	//v1.8.2
+	- [GUI]Backup listview now supports drag n drop for multiple files
+	- [Script]Added delete on startup to file shredder to get rid of protected files
+	- [Script]Fixed file shredder incorrect target path when run as Administrator
 	
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
