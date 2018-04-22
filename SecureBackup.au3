@@ -21,8 +21,8 @@
 #include "MetroGUI_UDF.au3"
 
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.8.1)
-#pragma compile(FileVersion, 1.8.1)
+#pragma compile(ProductVersion, 1.8.2)
+#pragma compile(FileVersion, 1.8.2)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, sandwichdoge@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -39,9 +39,15 @@ If $CmdLine[0] >= 1 Then
 			FileSetAttrib($CmdLine[1], "-RS")
 			If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
 				If _FileWriteAccessible($CmdLine[1]) = 1 Then
-					If MsgBox(64 + 4, "EvShred", "Shred data?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then _FileShred($CmdLine[1])
+					If MsgBox(64 + 4, "EvShred", "Shred data?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then
+						_FileShred($CmdLine[1])
+					EndIf
 				ElseIf Not IsAdmin() Then
-					ShellExecute(@AutoItExe, $CmdLine[1] & " /shred", "", "runas")
+					ShellExecute(@AutoItExe, '"' & $CmdLine[1] & '"' & ' "' & "/shred" & '"', "", "runas")
+				ElseIf IsAdmin() And _FileWriteAccessible($CmdLine[1]) = 0 Then
+					If MsgBox(64 + 4, "EvShred", "Looks like " & $CmdLine[1] & " is undeletable (possibly in use or protected)." & @CRLF & @CRLF & "Delete file on next system reboot?") = 6 Then
+						_DeleteOnReboot($CmdLine[1])
+					EndIf
 				EndIf
 			Else
 				_PurgeDir($CmdLine[1])
@@ -68,8 +74,9 @@ Global Const $STM_SETIMAGE = 0x0172
 ;$g_aDefaultItems: list of default folders to be added to the top when creating or loading listview ["Text to show", "DirPath", "IconPath"]
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems); Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.8.1"
+Global $g_sProgramVersion = "1.8.2"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
+Global $g_aGUIDropFiles
 
 $sTheme = IniRead($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "DarkTeal")
 _SetTheme($sTheme)
@@ -208,11 +215,11 @@ TrayItemSetOnEvent(-1, "ExitS")
 
 ;//Initialize
 ToOriginal()
+GUIRegisterMsg($WM_DROPFILES, 'WM_DROPFILES')
 GUISetState(@SW_SHOW)
 
 ;//Timer for Loading Animation
 DllCall("user32.dll", "int", "SetTimer", "hwnd", $hGUI, "int", 0, "int", $g_iAnimInterval, "int", 0)
-
 While 1
 	_Interface()
 WEnd
@@ -222,9 +229,10 @@ Func _Interface()
 	Switch $msg
 		Case $GUI_EVENT_DROPPED
 			If @GUI_DropId = 16 Then;//Drag destination is bkup listview
-				$sFile = @GUI_DragFile
-				Local $aFileToAdd[] = [$sFile]
-				_AddFilesToLV($lvBkUp2_BackupList, $aFileToAdd)
+				If UBound($g_aGUIDropFiles) >= 2 Then;//1st index = number of items dropped,
+					_ArrayDelete($g_aGUIDropFiles, 0);//need to delete it
+					_AddFilesToLV($lvBkUp2_BackupList, $g_aGUIDropFiles)
+				EndIf
 			EndIf
 		Case $GUI_EVENT_SECONDARYDOWN
 			$aCursorInfo = GUIGetCursorInfo($hGUI)
@@ -1090,11 +1098,11 @@ Func _FileShred($sFilePath)
 		$iSiz = Round(FileGetSize($sFilePath) / 1024)
 	EndIf
 	$iSiz = Int($iSiz)
-	If @error Then Return @error
+	If @error Then Return 1
 	
 	;//Number of passes
 	;1st pass - write 0s
-	$sChr = _StringRepeat($sChrN, 1024)
+	$sChr = _StringRepeat($sChrN, 1024) ;//To prevent variable overflow and to optimize HDD speed
 	$hFileToShred = FileOpen($sFilePath, 18)
 	For $i = 1 To $iSiz
 		FileWrite($hFileToShred, $sChr)
@@ -1104,7 +1112,7 @@ Func _FileShred($sFilePath)
 	FileSetPos($hFileToShred, 0, 0)
 	$sChr2 = _RandomData(1024)
 	For $i = 1 To $iSiz
-		FileWrite($hFileToShred, $sChr2)
+		If FileWrite($hFileToShred, $sChr2) = 0 Then Return 1
 	Next
 	FileClose($hFileToShred)
 	
@@ -1114,6 +1122,7 @@ Func _FileShred($sFilePath)
 		FileSetTime($sFilePath, "20000101", $i);//Change file's created/accessed/modified time to y2k.
 	Next
 	FileDelete($sFilePath)
+	Return 0
 EndFunc   ;==>_FileShred
 Func _FileRename($FileName, $ReName)
 	Local $SHFILEOPSTRUCT, $SourceStruct, $DestStruct
@@ -1358,3 +1367,38 @@ Func _Crypt_DecryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgI
 		Next
 	EndIf
 EndFunc   ;==>_Crypt_DecryptFolder
+
+Func WM_DROPFILES($hWnd, $iMsg, $wParam, $lParam)
+	#forceref $hWnd, $lParam
+	Switch $iMsg
+		Case $WM_DROPFILES
+			Local Const $aReturn = _WinAPI_DragQueryFileEx($wParam)
+			If UBound($aReturn) Then
+				$g_aGUIDropFiles = $aReturn
+			Else
+				Local Const $aError[1] = [0]
+				$g_aGUIDropFiles = $aError
+			EndIf
+	EndSwitch
+	Return $GUI_RUNDEFMSG
+EndFunc   ;==>WM_DROPFILES
+
+Func _ShredOnReboot($sFilename)
+	;//Issue: Can't shred on reboot if target file is on a different drive than script dir.
+	Local $__s, $sSourceFile = @ScriptDir & "\000"
+	$MOVEFILE_DELAY_UNTIL_REBOOT = 4
+	$MOVEFILE_REPLACE_EXISTING = 1
+	$nRawItemSize = FileGetSize($sFilename)
+	$hReplacementFile = FileOpen($sSourceFile, 18)
+	$__s = _StringRepeat(0, $nRawItemSize)
+	FileWrite($hReplacementFile, $__s)
+	FileClose($hReplacementFile)
+	$a_dllrtn = DllCall("kernel32.dll", "int", "MoveFileEx", 'str', $sSourceFile, 'str', $sFilename, 'dword', $MOVEFILE_DELAY_UNTIL_REBOOT + $MOVEFILE_REPLACE_EXISTING)
+	Return $a_dllrtn[0]
+EndFunc   ;==>_ShredOnReboot
+
+Func _DeleteOnReboot($sFilename)
+	$MOVEFILE_DELAY_UNTIL_REBOOT = 4
+	$a_dllrtn = DllCall("kernel32.dll", "int", "MoveFileEx", "str", $sFilename, "ptr", 0, "dword", $MOVEFILE_DELAY_UNTIL_REBOOT)
+	Return $a_dllrtn[0]
+EndFunc   ;==>_DeleteOnReboot
