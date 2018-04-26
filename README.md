@@ -9,4 +9,4 @@ Gather your files in one place and encrypt them for more secure and easier onlin
 **Download for Windows:** https://github.com/sandwichdoge/Ev-Secure-Backup/releases
 
 
-Thanks to BBs19 for Metro UI UDF, UEZ for CSS loading animations.
+Thanks to BBs19 and other contributors for Metro UI UDF, UEZ for CSS loading animations.
