@@ -22,16 +22,6 @@
 #include "MetroGUI_UDF.au3"
 #include "BinaryMerge.au3"
 
-
-;//Keywords for compilation
-#pragma compile(ProductVersion, 1.9.0)
-#pragma compile(FileVersion, 1.9.0)
-#pragma compile(UPX, False)
-#pragma compile(LegalCopyright, sandwichdoge@gmail.com)
-#pragma compile(ProductName, Ev-Secure Backup)
-#pragma compile(FileDescription, Securely backup your data)
-
-
 ;//[Shred] cmd if called with parameter
 If $CmdLine[0] >= 1 Then
 	If StringRegExp($CmdLineRaw, "/shred") Then
@@ -239,12 +229,19 @@ Func _Interface()
 		Case $GUI_EVENT_SECONDARYDOWN
 			$aCursorInfo = GUIGetCursorInfo($hGUI)
 			If $aCursorInfo[4] = $lvBkUp2_BackupList Then
+				Local $sSelection = "selected items"
+				$nItemSelected = _GUICtrlListView_GetSelectedIndices($lvBkUp2_BackupList)
+				If $nItemSelected <> "" Then
+					$sSelection = "highlighted"
+				Else
+					$sSelection = "selected items"
+				EndIf	
 				If $g_bSelectAll = True Then
 					$sPrefix = "De-"
 				Else
 					$sPrefix = ""
 				EndIf
-				Local $MenuButtonsArray[5] = ["Open file location", "Add files..", "Add folder..", "Remove from list", $sPrefix & "Select All"]
+				Local $MenuButtonsArray[5] = ["Open file location", "Add files..", "Add folder..", "Remove " & $sSelection, $sPrefix & "Select All"]
 				Local $MenuSelect = _Metro_RightClickMenu($hGUI, 160, $MenuButtonsArray)
 				Switch $MenuSelect
 					Case "0"
@@ -606,6 +603,7 @@ Func ToBkUp4()
 		_Metro_MsgBox(0, $g_sProgramName, "Passwords didn't match.")
 		Return
 	EndIf
+	$hObjTimer = TimerInit()
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "SHOW_PASSWORD", GUICtrlRead($cbBkUp3_ShowPwd))
 	IniWrite($g_sScriptDir & "\_Res\Settings.ini", "General", "COMPRESS_DATA", GUICtrlRead($cbBkUp3_Compress))
 	HideAllControls(True)
@@ -701,12 +699,13 @@ Func ToBkUp4()
 		$g_LoadingText = "Encrypting"
 		_Crypt_EncryptFile($g_sScriptDir & "\_temp", $g_sScriptDir & "\" & $sContainerName, $hKey, $CALG_USERKEY)
 		$g_LoadingText = "Cleaning"
-		If _FileShred($g_sScriptDir & "\_temp") = 1 Then $sReport &= "Error shredding " & @ScriptDir & "\_temp.zip file. Action advised!" & @CRLF
-		$sReport &= "Encryption finished." & @CRLF & "Destination: " & $g_sScriptDir & "\" & $sContainerName
+		If _FileShred($g_sScriptDir & "\_temp") = 1 Then $sReport &= "Error shredding " & @ScriptDir & "\_temp file. Action advised!" & @CRLF
+		$sReport &= "Encryption finished." & @CRLF & "Destination: " & $g_sScriptDir & "\" & $sContainerName & @CRLF
 	EndIf
 	_Crypt_DestroyKey($hKey)
 	GUICtrlSetData($lBkUp4_CurrentFile, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
+	$sReport &= "Operation took " & StringLeft(TimerDiff($hObjTimer) / 1000, 5) & " seconds."
 	$eReport = GUICtrlCreateEdit($sReport, 15, 45, $aCtrlPos[0] + $aCtrlPos[2] - 10, 200, BitOR($WS_VSCROLL, $ES_READONLY))
 	GUICtrlSetState($cbBkUp4_ShowEncryptedFile, $GUI_SHOW)
 	;_GUICtrlButton_SetImage($btnNext, "_Res\Finish.bmp")
@@ -793,6 +792,10 @@ Func BkUp2_RemoveSelected()
 		For $i = 0 To $_nItemCount
 			If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $i) = True Then $o += 1
 		Next
+		If $o = 0 Then
+			_GUICtrlListView_EndUpdate($lvBkUp2_BackupList)
+			Return
+		EndIf
 		If _Metro_MsgBox(4, $g_sProgramName, "Remove " & $o & " selected items from list?") = "Yes" Then
 			For $i = 0 To $_nItemCount
 				If _GUICtrlListView_GetItemChecked($lvBkUp2_BackupList, $count) = True Then
@@ -1349,6 +1352,7 @@ Func _Crypt_EncryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgI
 EndFunc   ;==>_Crypt_EncryptFolder
 
 Func _Crypt_DecryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgID)
+	;//Deprecated as of v190
 	Local $sDestFile
 	If Not FileExists($_sDestinationFolder) Then DirCreate($_sDestinationFolder)
 	$aFiles = _FileListToArray($_sSourceFolder, '*', 1) ;List all files in dir
