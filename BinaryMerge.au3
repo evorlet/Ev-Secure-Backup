@@ -1,5 +1,6 @@
 ;//Author:sandwichdoge
 ;//Merge multiple files/folder into a restorable container
+;//Sort of like zip packaging, but without the dictionary compression
 #include-once
 #include <Array.au3>
 #include <WinAPIFiles.au3>
