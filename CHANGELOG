@@ -72,6 +72,10 @@
 	- [GUI]Backup listview now supports drag n drop for multiple files
 	- [Script]Added delete on startup to file shredder to get rid of protected files
 	- [Script]Fixed file shredder incorrect target path when run as Administrator
+	//v1.9.1
+	- [Script]New custom binary merge engine for backup without compression
+	- [Script]Cleaned up script and unnecessary wait periods
+	- [GUI]Improved listview text prompts
 	
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
