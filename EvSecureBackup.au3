@@ -1,17 +1,3 @@
-#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
-#AutoIt3Wrapper_Icon=..\Icons\1442169766_MB__LOCK.ico
-#AutoIt3Wrapper_Outfile=..\..\Soft\Ev-SBackup\Ev-SBackup.exe
-#AutoIt3Wrapper_Run_Tidy=n
-#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
-
-;//Keywords for compilation
-#pragma compile(ProductVersion, 1.9.2)
-#pragma compile(FileVersion, 1.9.2)
-#pragma compile(UPX, False)
-#pragma compile(LegalCopyright, sandwichdoge@gmail.com)
-#pragma compile(ProductName, Ev-Secure Backup)
-#pragma compile(FileDescription, Securely backup your data)
-
 #include-once
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -95,7 +81,6 @@ _SetTheme($sTheme)
 
 ;//Initialize
 ToOriginal()
-GUIRegisterMsg($WM_DROPFILES, 'WM_DROPFILES')
 GUISetState(@SW_SHOW)
 
 ;//Timer for Loading Animation
@@ -172,18 +157,3 @@ Func ExitS()
 	_GDIPlus_Shutdown()
 	Exit
 EndFunc   ;==>ExitS
-
-Func WM_DROPFILES($hWnd, $iMsg, $wParam, $lParam)
-	#forceref $hWnd, $lParam
-	Switch $iMsg
-		Case $WM_DROPFILES
-			Local Const $aReturn = _WinAPI_DragQueryFileEx($wParam)
-			If UBound($aReturn) Then
-				$g_aGUIDropFiles = $aReturn
-			Else
-				Local Const $aError[1] = [0]
-				$g_aGUIDropFiles = $aError
-			EndIf
-	EndSwitch
-	Return $GUI_RUNDEFMSG
-EndFunc   ;==>WM_DROPFILES
