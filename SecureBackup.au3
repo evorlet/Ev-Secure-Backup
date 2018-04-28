@@ -22,6 +22,16 @@
 #include "MetroGUI_UDF.au3"
 #include "BinaryMerge.au3"
 
+
+;//Keywords for compilation
+#pragma compile(ProductVersion, 1.9.2)
+#pragma compile(FileVersion, 1.9.2)
+#pragma compile(UPX, False)
+#pragma compile(LegalCopyright, sandwichdoge@gmail.com)
+#pragma compile(ProductName, Ev-Secure Backup)
+#pragma compile(FileDescription, Securely backup your data)
+
+
 ;//[Shred] cmd if called with parameter
 If $CmdLine[0] >= 1 Then
 	If StringRegExp($CmdLineRaw, "/shred") Then
@@ -66,7 +76,7 @@ Global $g_sProgramName = "Ev-Secure Backup", $g_sScriptDir = @ScriptDir
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems) ; Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.9.0"
+Global $g_sProgramVersion = "1.9.2"
 Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState, $g_LoadingText
 Global $g_aGUIDropFiles
 
@@ -689,10 +699,11 @@ Func ToBkUp4()
 	Else ;//No compression, only encrypt files/folders
 		$g_LoadingText = "Merging"
 		For $i = 0 To UBound($g_aToBackupItems) - 1
-			If StringRegExp(FileGetAttrib($g_aToBackupItems[$i]), "(D)") Then
-				_BinaryMergeFolder($g_aToBackupItems[$i], $g_sScriptDir & "\_temp", False)
+			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
+			If StringRegExp(FileGetAttrib($sFileToCompress), "(D)") Then
+				_BinaryMergeFolder($sFileToCompress, $g_sScriptDir & "\_temp", False)
 			Else
-				Local $a[] = [$g_aToBackupItems[$i]]
+				Local $a[] = [$sFileToCompress]
 				_BinaryMergeFiles($a, $g_sScriptDir & "\_temp", False)
 			EndIf
 		Next
@@ -721,7 +732,6 @@ Func ToBkUp5()
 	GUICtrlDelete($lBkUp4_Status)
 	GUICtrlDelete($eReport)
 	_GUICtrlListView_DeleteAllItems($lvBkUp2_BackupList)
-	_GUICtrlButton_SetImage($btnNext, $g_sScriptDir & "\_Res\Next.bmp")
 	BkUp2_SelectAll($lvBkUp2_BackupList)
 	If GUICtrlRead($cbBkUp4_ShowEncryptedFile) = $GUI_CHECKED Then
 		_WinAPI_ShellOpenFolderAndSelectItems($g_sScriptDir & "\" & $sCurProfile)
