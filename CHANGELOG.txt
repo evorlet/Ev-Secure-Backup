@@ -1,0 +1,106 @@
+#cs
+	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
+
+
+	Thanks to BBs19 for Metro UI UDF, UEZ for CSS loading animations.
+
+	2015 T.H. sandwichdoge@gmail.com
+
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+	Changelog:
+	//v1.1:
+	- Fixed "add files.." selection issue, strengthened derived password (v1.0 backups can't be retrieved in v1.1 or later)
+	//v1.2:
+	- [GUI]Corrected "show password" and loading animation's position
+	- [List]Removed .txt requirement for lists, list names can't be empty, added option to purge all lists
+	- [Other]Added Purge Folders shell for FileShredder, option to Purge YourData restoration folder
+	//v1.3:
+	- [GUI]Modified "About"
+	- [List]Default folders are no longer de-selected when changing between lists, unchecked items are now saved
+	- [Script]Cleanup and descriptions for future implementation and maintenance
+	//v1.3.5:
+	- [GUI]Fixed label resizing problem in backup step 3
+	- [List]Fixed new files not auto-checking when added, fixed bug where default folders were not processed, added option to open file location
+	- [Script]Global array for default folders => less constant elements
+	//v1.3.7:
+	- [List]Fixed bug where switching between lists didn't display filenames correctly, added browser data backup
+	//v1.3.9:
+	- [List]Browser data states are now saved
+	- [Other]List files are now encrypted
+	//v1.4.4:
+	- [GUI]Show password checkbox state is remembered, corrected git link in "About" section, redesigned buttons
+	- [Other]Added option to purge jump lists and event logs in Windows, Icon for FileShredder, FileShredder can now handle UAC-locked files
+	- [Script]Replaced _FileInUse() with _FileWriteAccessible()
+	//v1.4.8:
+	- [Encryption]Shortened derived password for better performance, added compression-free encryption
+	- [GUI]Corrected report area positioning, fixed various GUI bugs
+	- [Other]Some parts of registry will be purged during Windows activity wipe to remove traces
+	//v1.5.0:
+	- [Encryption]Output containers are now named after profile name instead of "EncryptedContainer"
+	- [GUI]Cursor for Backup and Restore buttons
+	- [Other]Purge all history located in "AppDataLocal\Microsoft\Windows", "\AppData\Local\Microsoft\Windows\InetCache", "AppData\Media Cache" - WinClear
+	//v1.5.3
+	- [GUI]Metro GUI overhaul
+	//v1.6.0
+	- [List]User can now selectively backup browser history/bookmarks instead of processing everything
+	- [List]Better file/folder size display
+	//v1.6.2
+	- [GUI]Improved various aesthetics, brought back drag 'n drop for metro GUI
+	- [List]Corrected Google Chrome data path
+	//v1.6.3
+	- [Fix]Compression no longer gets stuck on non-existing files
+	//v1.6.4
+	- [Fix]Reworked and fixed all bugs with File Shredder
+	//v1.6.5
+	- [Fix]Bug where default folders get added again after completing 1 BackUp pass
+	//v1.6.6
+	- [Other]Shred context menu now requires confirmation
+	//v1.6.7
+	- [Other]File shredder 2nd pass now overwrites with random data instead of 0s
+	//v1.6.9
+	- [GUI]Moved Loading animation handler down a bit to avoid overlapping UI window border
+	- [GUI]Added tip for "Compress Data" option
+	//v1.7.2
+	- [Script]Updated Metro library to v5.1
+	- [GUI]Applied Metro theme to context menus and message boxes
+	//v1.7.3
+	- [GUI]Backup listview and restore input now accept drag and drop files properly
+	//v1.8.0
+	- [GUI]Better icons & file size display for backup listview
+	- [GUI]You can now force exit while backup/restoration is in process
+	- [GUI]Added dark theme
+	//v1.8.1
+	- [GUI]Fixed all missing texts in encryption loading screen + Drag 'n drop listview bug
+	- [Script]Password variables are now freed immediately after completion for better security
+	- [Script]File shredder now changes file's created/accessed/modified time + smarter confirmation prompt
+	//v1.8.2
+	- [GUI]Backup listview now supports drag n drop for multiple files
+	- [Script]Added delete on startup to file shredder to get rid of protected files
+	- [Script]Fixed file shredder incorrect target path when run as Administrator
+	//v1.9.1
+	- [Script]New custom binary merge engine for backup without compression
+	- [Script]Cleaned up script and unnecessary wait periods
+	- [GUI]Improved listview text prompts
+	//v1.9.2
+	- [Package Engine]No compression encryption now saves file with duplicate names in different folders properly
+	- [Script]No compression encryption now saves default folders
+
+	TODO: (high to low priority)
+	- Improve custom binary merge engine to decrease header size
+	- Option to choose number of passes for file shredder
+	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
+	- Option to put the files back where they originally were
+
+#ce

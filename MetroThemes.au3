@@ -19,6 +19,15 @@ Global $CB_Radio_CheckMark_Color = "0x1a1a1a" ; Checkbox and Radio checkmark col
 Func _SetTheme($ThemeSelect = "DarkTeal")
 	$GUI_Theme_Name = $ThemeSelect
 	Switch ($ThemeSelect)
+		Case "DarkTealCustom"
+			$GUIThemeColor = "0x191919"
+			$FontThemeColor = "0xFFFFFF"
+			$GUIBorderColor = "0x2D2D2D"
+			$ButtonBKColor = "0x00796b"
+			$ButtonTextColor = "0xFFFFFF"
+			$CB_Radio_Color = "0xFFFFFF"
+			$CB_Radio_Hover_Color = "0xD8D8D8"
+			$CB_Radio_CheckMark_Color = "0x1a1a1a"
 		Case "LightBlueCustom"
 			$GUIThemeColor = "0xF5F5F5"
 			$FontThemeColor = "0x000000"

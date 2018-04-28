@@ -91,11 +91,11 @@ EndIf
 ; Example........:
 ; ===============================================================================================================
 Func _Zip_AddItem($sZipFile, $sItem, $sDestDir = "", $iFlag = 21)
-    If Not _Zip_DllChk() Then Return SetError(@error, 0, 0)
-    If Not _IsFullPath($sZipFile) Then Return SetError(3, 0, 0)
-    If Not _IsFullPath($sItem) Then Return SetError(4, 0, 0)
-    If Not FileExists($sItem) Then Return SetError(5, 0, 0)
-    If _IsFullPath($sDestDir) Then Return SetError(6, 0, 0)
+    ;;If Not _Zip_DllChk() Then Return SetError(@error, 0, 0)
+    ;;If Not _IsFullPath($sZipFile) Then Return SetError(3, 0, 0)
+    ;;If Not _IsFullPath($sItem) Then Return SetError(4, 0, 0)
+    ;;If Not FileExists($sItem) Then Return SetError(5, 0, 0)
+    ;;If _IsFullPath($sDestDir) Then Return SetError(6, 0, 0)
     ; clean paths
     $sItem = _Zip_PathStripSlash($sItem)
     $sDestDir = _Zip_PathStripSlash($sDestDir)
@@ -116,12 +116,14 @@ Func _Zip_AddItem($sZipFile, $sItem, $sDestDir = "", $iFlag = 21)
             ; get out, cannot overwrite folders... AT ALL
             Return SetError(8, 0, 0)
         Else
+			#cs
             If $iOverwrite Then
                 _Zip_InternalDelete($sZipFile, $sTest)
                 If @error Then Return SetError(10, 0, 0)
             Else
                 Return SetError(9, 0, 0)
             EndIf
+			#ce
         EndIf
     EndIf
     Local $sTempFile = ""
