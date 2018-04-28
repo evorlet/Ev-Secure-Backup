@@ -109,6 +109,8 @@ $ipRestore3_Pwd = GUICtrlCreateInput("", 40, $aGUIPos[3] - 313, $aGUIPos[2] - 93
 $hImage = _GUIImageList_Create(16, 16)
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
 
+GUIRegisterMsg($WM_DROPFILES, 'WM_DROPFILES')
+
 ;#End of GUI creation
 
 
@@ -260,3 +262,18 @@ Func ToOriginal()
 	
 	$sState = "Original"
 EndFunc   ;==>ToOriginal
+
+Func WM_DROPFILES($hWnd, $iMsg, $wParam, $lParam)
+	#forceref $hWnd, $lParam
+	Switch $iMsg
+		Case $WM_DROPFILES
+			Local Const $aReturn = _WinAPI_DragQueryFileEx($wParam)
+			If UBound($aReturn) Then
+				$g_aGUIDropFiles = $aReturn
+			Else
+				Local Const $aError[1] = [0]
+				$g_aGUIDropFiles = $aError
+			EndIf
+	EndSwitch
+	Return $GUI_RUNDEFMSG
+EndFunc   ;==>WM_DROPFILES
