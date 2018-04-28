@@ -76,6 +76,9 @@
 	- [Script]New custom binary merge engine for backup without compression
 	- [Script]Cleaned up script and unnecessary wait periods
 	- [GUI]Improved listview text prompts
+	//v1.9.2
+	- [Package Engine]No compression encryption now saves file with duplicate names in different folders properly
+	- [Script]No compression encryption now saves default folders
 	
 	TODO: (high to low priority)
 	- Option to choose number of passes for file shredder
