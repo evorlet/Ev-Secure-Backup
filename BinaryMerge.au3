@@ -1,7 +1,3 @@
-;//Author:sandwichdoge
-;//Merge multiple files/folder into a restorable container
-;//Sort of like zip packaging, but without the dictionary compression
-
 #include-once
 #include <Array.au3>
 #include <WinAPIFiles.au3>
@@ -93,21 +89,12 @@ Func _BinaryMergeFiles($a_FilesToMerge, $sContainerPath, $bMakeDuplicate = False
 		$sCurFileSIZE = FileGetSize($sCurFilePATH)
 		If Not $sCurFileSIZE Then ContinueLoop
 		$sCurFileNAME = _GetFileNameFromPath($sCurFilePATH)
-		For $j = 0 To UBound($aOldHeaderData, 1) - 1
-			If $sCurFileNAME = $aOldHeaderData[$j][0] Then ;//File already exists in container.
-				If $bMakeDuplicate = False Then
-					$a_FilesToMerge[$i] = ""
-					ContinueLoop (2) ;//Skip adding data about this file to header.
-				ElseIf $bMakeDuplicate = True Then
-					If $aOldHeaderData[$j][1] <> $sCurFileSIZE Then ;//Files content are different (sloppy check but should work regardless).
-						;//Make a copy with incremental name
-						$sCurFileNAME = "Duplicate_" & $sCurFileNAME
-					Else ;//Files are the same, no duplication needed.
-						$a_FilesToMerge[$i] = ""
-					EndIf
-				EndIf
+		If __BinaryCheckDuplicate($aOldHeaderData, $sCurFilePATH) Then;//Duplicate file
+			If $bMakeDuplicate = False Then
+				$a_FilesToMerge[$i] = ""
+				ContinueLoop (1) ;//Skip adding data about this file to header.
 			EndIf
-		Next
+		EndIf
 		$sHeader &= "|"
 		$sHeader &= $sCurFileNAME & ":" ;//[?file1.txt,1045|?][?hello.png,2459035|NewFolder?]
 		$sHeader &= $sCurFileSIZE
@@ -145,6 +132,17 @@ Func _BinaryMergeFiles($a_FilesToMerge, $sContainerPath, $bMakeDuplicate = False
 	FileClose($hContainer)
 EndFunc   ;==>_BinaryMergeFiles
 
+Func __BinaryCheckDuplicate($aOldHeaderData, $sFilePath)
+	For $j = 0 To UBound($aOldHeaderData, 1) - 1
+		$s_Tmp = $aOldHeaderData[$j][2] & "\" & $aOldHeaderData[$j][0]
+		If StringRight($sFilePath, StringLen($s_Tmp)) = $s_Tmp Then
+			Return True
+		Else
+			Return False
+		EndIf	
+	Next
+EndFunc
+	
 Func _BinarySplit($sContainerPath, $sDest)
 	$sDest = _StripFilePath($sDest)
 	If Not FileExists($sDest) Then DirCreate($sDest)
@@ -183,7 +181,7 @@ Func _GetUsedBytesInBufferCount($sbString)
 	If Not StringInStr($sbString, "[?") Then Return 0 ;//Buffer doesn't exist - is new container
 	$a = StringToASCIIArray($sbString)
 	For $i = 0 To UBound($a) - 1
-		If $a[$i] = 0 Then Return $i
+		If $a[$i] = 0 Then Return $i;//NULL doesn't exist as an Autoit string variant so this is fine
 	Next
 	Return UBound($a)
 EndFunc   ;==>_GetUsedBytesInBufferCount
