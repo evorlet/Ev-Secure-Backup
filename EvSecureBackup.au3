@@ -1,17 +1,3 @@
-#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
-#AutoIt3Wrapper_Icon=..\Icons\1442169766_MB__LOCK.ico
-#AutoIt3Wrapper_Outfile=..\..\Soft\Ev-SBackup\Ev-SBackup.exe
-#AutoIt3Wrapper_Run_Tidy=n
-#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
-
-;//Keywords for compilation
-#pragma compile(ProductVersion, 1.9.2)
-#pragma compile(FileVersion, 1.9.2)
-#pragma compile(UPX, False)
-#pragma compile(LegalCopyright, sandwichdoge@gmail.com)
-#pragma compile(ProductName, Ev-Secure Backup)
-#pragma compile(FileDescription, Securely backup your data)
-
 #include-once
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -35,7 +21,8 @@
 #include "_Zip.au3"
 #include "MetroGUI_UDF.au3"
 #include "BinaryMerge.au3"
-#include "EvS_lib\VarDeclarations.au3"
+#include "EvS_lib\Init.au3"
+#include "EvS_lib\Cmd.au3"
 #include "EvS_lib\FolderEncryption_Legacy.au3"
 #include "EvS_lib\FileShred.au3"
 #include "EvS_lib\FileOps.au3"
@@ -44,38 +31,6 @@
 #include "EvS_lib\UI\Restore_UI.au3"
 #include "EvS_lib\TrayAndContextMenu.au3"
 
-
-;//[Shred] cmd if called with parameter
-If $CmdLine[0] >= 1 Then
-	If StringRegExp($CmdLineRaw, "/shred") Then
-		If StringRegExp($CmdLine[1], "\\") Then
-			FileSetAttrib($CmdLine[1], "-RS")
-			If Not StringRegExp(FileGetAttrib($CmdLine[1]), "D") Then
-				If _FileWriteAccessible($CmdLine[1]) = 1 Then
-					If MsgBox(64 + 4, "EvShred", "Shred data?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then
-						_FileShred($CmdLine[1])
-					EndIf
-				ElseIf Not IsAdmin() Then
-					ShellExecute(@AutoItExe, '"' & $CmdLine[1] & '"' & ' "' & "/shred" & '"', "", "runas")
-				ElseIf IsAdmin() And _FileWriteAccessible($CmdLine[1]) = 0 Then
-					If MsgBox(64 + 4, "EvShred", "Looks like " & $CmdLine[1] & " is undeletable (possibly in use or protected)." & @CRLF & @CRLF & "Delete file on next system reboot?") = 6 Then
-						_DeleteOnReboot($CmdLine[1])
-					EndIf
-				EndIf
-			Else
-				_PurgeDir($CmdLine[1])
-				DirRemove($CmdLine[1], 1)
-			EndIf
-		EndIf
-	ElseIf $CmdLineRaw = "/add" Then
-		_AddShredderCM()
-	EndIf
-	Exit
-EndIf
-
-Opt("TrayAutoPause", 0)
-Opt("TrayMenuMode", 3)
-Opt("TrayOnEventMode", 1)
 ;Opt("MustDeclareVars", 1)
 
 ;_GDIPlus_Startup()
