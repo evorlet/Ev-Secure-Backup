@@ -1,11 +1,14 @@
 #include "LoadingAnim.au3"
 
+Global $sTheme = IniRead($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "DarkTeal")
+_SetTheme($sTheme)
+
 ;//GUI elements declaration
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
 Global $hBkUp2_ContextMenu, $lBkUp4_CurrentFile, $lBkUp4_Status, $eReport, $btnOriginal_Backup, $btnOriginal_Restore
 Global $nSizeColumn, $btnNext, $lBkUp3_Pwd, $lBkUp3_PwdConfirm, $ipBkUp3_Pwd, $ipBkUp3_PwdConfirm, $btnOriginal_Restore, $cbBkUp3_ShowPwd
 Global $lvBkUp2_BackupList, $btnOriginal_Backup
-Global $g_aGUIDropFiles, $sTheme, $sState
+Global $g_aGUIDropFiles, $sTheme, $sState, $g_iAnimInterval = 20, $iPerc = 0
 
 ;//GUI creation
 Global $aGUIPos[] = [0, 0, 403, 500]
@@ -110,6 +113,7 @@ $hImage = _GUIImageList_Create(16, 16)
 _GUICtrlListView_SetImageList($lvBkUp2_BackupList, $hImage, 1)
 
 GUIRegisterMsg($WM_DROPFILES, 'WM_DROPFILES')
+DllCall("user32.dll", "int", "SetTimer", "hwnd", $hGUI, "int", 0, "int", $g_iAnimInterval, "int", 0)
 
 ;#End of GUI creation
 

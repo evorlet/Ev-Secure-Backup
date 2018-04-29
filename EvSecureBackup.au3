@@ -1,3 +1,17 @@
+#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
+#AutoIt3Wrapper_Icon=..\Icons\1442169766_MB__LOCK.ico
+#AutoIt3Wrapper_Outfile=..\..\Soft\Ev-SBackup\Ev-SBackup.exe
+#AutoIt3Wrapper_Run_Tidy=n
+#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
+
+;//Keywords for compilation
+#pragma compile(ProductVersion, 1.9.2)
+#pragma compile(FileVersion, 1.9.2)
+#pragma compile(UPX, False)
+#pragma compile(LegalCopyright, sandwichdoge@gmail.com)
+#pragma compile(ProductName, Ev-Secure Backup)
+#pragma compile(FileDescription, Securely backup your data)
+
 #include-once
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -72,19 +86,13 @@ If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_s
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems) ; Important variable, to be used in various listview functions
 Global $g_sProgramVersion = "1.9.2"
-Global $g_aToBackupItems[0], $g_bSelectAll = False, $iPerc = 0, $g_iAnimInterval = 20, $g_aProfiles[0], $sCurProfile, $sState
-Global $g_aGUIDropFiles
-
-Global $sTheme = IniRead($g_sScriptDir & "\_Res\Settings.ini", "GUI", "Theme", "DarkTeal")
-_SetTheme($sTheme)
-
+Global $g_aToBackupItems[0], $g_aProfiles[0], $sState
 
 ;//Initialize
-ToOriginal()
+ToOriginal();//Set UI to original state
 GUISetState(@SW_SHOW)
 
 ;//Timer for Loading Animation
-DllCall("user32.dll", "int", "SetTimer", "hwnd", $hGUI, "int", 0, "int", $g_iAnimInterval, "int", 0)
 While 1
 	_Interface()
 WEnd

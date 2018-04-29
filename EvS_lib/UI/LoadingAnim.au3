@@ -2,6 +2,7 @@
 Global $cPic, $g_LoadingText
 Global Const $STM_SETIMAGE = 0x0172
 
+
 Func PlayAnim()
 	$hHBmp_BG = _GDIPlus_MultiColorLoader(300, 300, $g_LoadingText)
 	$hB = GUICtrlSendMsg($cPic, $STM_SETIMAGE, $IMAGE_BITMAP, $hHBmp_BG)
@@ -14,7 +15,6 @@ Func _GDIPlus_MultiColorLoader($iW, $iH, $sText = "LOADING", $sFont = "Verdana",
 	Local Const $hBitmap = _GDIPlus_BitmapCreateFromScan0($iW, $iH)
 	Local Const $hGfx = _GDIPlus_ImageGetGraphicsContext($hBitmap)
 	Local $sGUIThemeColor = "0xFF" & StringRight($GUIThemeColor, 6)
-	
 	_GDIPlus_GraphicsSetSmoothingMode($hGfx, 4 + (@OSBuild > 5999))
 	_GDIPlus_GraphicsSetTextRenderingHint($hGfx, 3)
 	_GDIPlus_GraphicsSetPixelOffsetMode($hGfx, $GDIP_PIXELOFFSETMODE_HIGHQUALITY)
