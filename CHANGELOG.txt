@@ -96,6 +96,9 @@
 	//v1.9.2
 	- [Package Engine]No compression encryption now saves file with duplicate names in different folders properly
 	- [Script]No compression encryption now saves default folders
+	//v1.9.3
+	- [Package Engine]Vastly improved performance by disabling duplication check
+	- [GUI]Listview no longer accepts duplicate items
 
 	TODO: (high to low priority)
 	- Improve custom binary merge engine to decrease header size

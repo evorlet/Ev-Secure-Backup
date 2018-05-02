@@ -127,6 +127,8 @@ Func ToBkUp4()
 		$sReport &= "Container " & $sContainerName & " already exists, overwriting.." & @CRLF
 		FileDelete($g_sScriptDir & "\" & $sContainerName)
 	EndIf
+	Opt("GUIOnEventMode", 1)
+	GUICtrlSetOnEvent($GUI_CLOSE_BUTTON, "ExitS")
 	If GUICtrlRead($cbBkUp3_Compress) = $GUI_CHECKED Then ;Use Zip encryption
 		$g_LoadingText = "Compressing"
 		$sReport &= "Compressing your data.." & @CRLF
@@ -143,8 +145,6 @@ Func ToBkUp4()
 			Sleep(200)
 			If _FileWriteAccessible($sTempZip) = 1 Then ExitLoop
 		Next
-		Opt("GUIOnEventMode", 1)
-		GUICtrlSetOnEvent($GUI_CLOSE_BUTTON, "ExitS")
 		For $i = 0 To UBound($g_aToBackupItems, 1) - 1 ;// Process all backup items read from listview
 			If Mod($i, 8) = 0 Then Sleep(200) ;Take a break every 8 items processed
 			$sFileToCompress = _ConvertDefaultFolderPath($g_aToBackupItems[$i])
@@ -180,7 +180,6 @@ Func ToBkUp4()
 		$g_LoadingText = "Encrypting"
 		_Crypt_EncryptFile($sTempZip, $g_sScriptDir & "\" & $sContainerName, $hKey, $CALG_USERKEY)
 		GUICtrlSetState($GUI_MINIMIZE_BUTTON, $GUI_SHOW)
-		Opt("GUIOnEventMode", 0)
 		If @error Then
 			$sReport &= "Encryption error. Attempted key: " & $sPwdHashed & ". Algorithm: AES-256" & @CRLF
 		Else
@@ -206,6 +205,7 @@ Func ToBkUp4()
 		$sReport &= "Encryption finished." & @CRLF & "Destination: " & $g_sScriptDir & "\" & $sContainerName & @CRLF
 	EndIf
 	_Crypt_DestroyKey($hKey)
+	Opt("GUIOnEventMode", 0)
 	GUICtrlSetData($lBkUp4_CurrentFile, "")
 	$aCtrlPos = ControlGetPos($hGUI, "", $btnNext)
 	$sReport &= "Operation took " & StringLeft(TimerDiff($hObjTimer) / 1000, 5) & " seconds."
@@ -429,3 +429,10 @@ Func HideCompressing() ;Hide pop-up compressing window when archiving w/ ZIP
 		Sleep(1000)
 	EndIf
 EndFunc   ;==>HideCompressing
+
+Func _ObfuscatePwd($sPwdToDerive) ;//Make user pwd longer
+	Local $sResult
+	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2)
+	$sResult &= StringReverse($sResult)
+	Return $sResult
+EndFunc   ;==>_ObfuscatePwd

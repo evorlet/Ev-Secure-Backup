@@ -1,3 +1,17 @@
+#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
+#AutoIt3Wrapper_Icon=..\Icons\1442169766_MB__LOCK.ico
+#AutoIt3Wrapper_Outfile=..\..\Soft\Ev-SBackup\Ev-SBackup.exe
+#AutoIt3Wrapper_Run_Tidy=n
+#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
+
+;//Keywords for compilation
+#pragma compile(ProductVersion, 1.9.3)
+#pragma compile(FileVersion, 1.9.3)
+#pragma compile(UPX, False)
+#pragma compile(LegalCopyright, sandwichdoge@gmail.com)
+#pragma compile(ProductName, Ev-Secure Backup)
+#pragma compile(FileDescription, Securely backup your data)
+
 #include-once
 #include <GuiconstantsEx.au3>
 #include <ListViewConstants.au3>
@@ -25,7 +39,7 @@
 #include "EvS_lib\Cmd.au3"
 #include "EvS_lib\FolderEncryption_Legacy.au3"
 #include "EvS_lib\FileShred.au3"
-#include "EvS_lib\FileOps.au3"
+#include "EvS_lib\FileOps.au3";//rename & check if accessible
 #include "EvS_lib\UI\Main_UI.au3"
 #include "EvS_lib\UI\BackUp_UI.au3"
 #include "EvS_lib\UI\Restore_UI.au3"
@@ -40,7 +54,7 @@ _Crypt_Startup()
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems) ; Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.9.2"
+Global $g_sProgramVersion = "1.9.3"
 Global $g_aToBackupItems[0], $g_aProfiles[0], $sState
 
 ;//Initialize
@@ -53,11 +67,24 @@ While 1
 WEnd
 
 
-Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False) ;//$bFromFilet:set item's state & remove "::chkd" string if used in BkUp2()
+Func _AddFilesToLV($hWnd, $aFilesList, $bFromFile = False) ;//$bFromFilet:set item's state & remove "::chkd" from ev_ file. if True = func is called internally
+	Local $aLVItems[0]
 	Local $sCurFile, $bCheckState = True
 	If Not IsArray($aFilesList) Then Return
+	For $i = 0 To _GUICtrlListView_GetItemCount($hWnd) - 1
+		$sBackupItem = _GUICtrlListView_GetItemText($hWnd, $i)
+		_ArrayAdd($aLVItems, $sBackupItem)
+	Next
 	For $i = 0 To UBound($aFilesList) - 1
 		$sCurFile = $aFilesList[$i]
+		;//Check duplication, duplicated items will not be added.
+		For $j = $g_nDefaultFoldersCount To UBound($aLVItems) - 1
+			If $sCurFile = $aLVItems[$j] Then
+				_GUICtrlListView_SetItemSelected($hWnd, $j)
+				ContinueLoop(2)
+			EndIf	
+		Next
+		
 		If $sCurFile Then
 			If $bFromFile = True Then ;If called upon listview creation
 				If StringRegExp($sCurFile, "(::chkd)") Then ;;
@@ -99,20 +126,6 @@ Func _GetItemSizeString($sItemPath)
 	EndIf
 	Return $nItemSize
 EndFunc   ;==>_GetItemSizeString
-
-Func _ObfuscatePwd($sPwdToDerive) ;//Make user pwd longer
-	Local $sResult
-	$sResult = StringTrimLeft(_Crypt_HashData($sPwdToDerive, $CALG_SHA1), 2)
-	$sResult &= StringReverse($sResult)
-	Return $sResult
-EndFunc   ;==>_ObfuscatePwd
-
-Func SpecialEvents() ;//Handling default GUI events
-	Select
-		Case @GUI_CtrlId = $GUI_EVENT_CLOSE
-			ExitS()
-	EndSelect
-EndFunc   ;==>SpecialEvents
 
 Func ExitS()
 	If FileExists($g_sScriptDir & "\_temp.zip") Then _FileShred($g_sScriptDir & "\_temp.zip") ;Clean up

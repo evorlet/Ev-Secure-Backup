@@ -7,7 +7,7 @@ _SetTheme($sTheme)
 Global $ipRestore2_ArchiveDir, $btnRestore2_Browse, $lRestore4_Status
 Global $hBkUp2_ContextMenu, $lBkUp4_CurrentFile, $lBkUp4_Status, $eReport, $btnOriginal_Backup, $btnOriginal_Restore
 Global $nSizeColumn, $btnNext, $lBkUp3_Pwd, $lBkUp3_PwdConfirm, $ipBkUp3_Pwd, $ipBkUp3_PwdConfirm, $btnOriginal_Restore, $cbBkUp3_ShowPwd
-Global $lvBkUp2_BackupList, $btnOriginal_Backup
+Global $lvBkUp2_BackupList, $btnOriginal_Backup, $GUI_CLOSE_BUTTON
 Global $g_aGUIDropFiles, $sTheme, $sState, $g_iAnimInterval = 20, $iPerc = 0
 
 ;//GUI creation
@@ -266,6 +266,13 @@ Func ToOriginal()
 	
 	$sState = "Original"
 EndFunc   ;==>ToOriginal
+
+Func SpecialEvents() ;//Handling default GUI events
+	Select
+		Case @GUI_CtrlId = $GUI_EVENT_CLOSE
+			ExitS()
+	EndSelect
+EndFunc   ;==>SpecialEvents
 
 Func WM_DROPFILES($hWnd, $iMsg, $wParam, $lParam)
 	#forceref $hWnd, $lParam

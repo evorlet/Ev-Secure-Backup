@@ -16,8 +16,10 @@ If $CmdLine[0] >= 1 Then
 					EndIf
 				EndIf
 			Else
-				_PurgeDir($CmdLine[1])
-				DirRemove($CmdLine[1], 1)
+				If MsgBox(64 + 4, "EvShred", "Shred data?" & @CRLF & @CRLF & "WARNING: Shredded data will be lost forever!") = 6 Then
+					_PurgeDir($CmdLine[1])
+					DirRemove($CmdLine[1], 1)
+				EndIf
 			EndIf
 		EndIf
 	ElseIf $CmdLineRaw = "/add" Then
