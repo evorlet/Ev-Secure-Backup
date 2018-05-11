@@ -1,5 +1,5 @@
 Func _Crypt_EncryptFolder($_sSourceFolder, $_sDestinationFolder, $_sKey, $_iAlgID)
-	;//Recursively encrypt everything in a folder.
+	;//Recursively encrypt everything in a folder. Deprecated as of v190
 	Local $sDestFile
 	If Not FileExists($_sDestinationFolder) Then DirCreate($_sDestinationFolder)
 	$aFiles = _FileListToArray($_sSourceFolder, '*', 1) ;List all files in dir
