@@ -5,21 +5,45 @@
 #include <File.au3>
 
 Global Const $_1KB = 1024
+Global Const $_128B = 128
 Global Const $_48KB = $_1KB * 48
 Global Const $_1MB = 1048576
+;//Header size's len = 1kB
+
+
+Func _FileReadBackwards($__sPath, $__nChars)
+	$__hFile = FileOpen($__sPath, 16)
+	FileSetPos($__hFile, -$__nChars, 2)
+	$sRtn = FileRead($__hFile, $__nChars)
+	FileClose($__hFile)
+	Return $sRtn
+EndFunc
+
 
 Func _DisplayPackageInfo($sContainerPath)
 	$sHeader = _GetHeaderFromPackage($sContainerPath)
 	$aInfo = _ExtractDataFromHeader($sHeader)
-	_ArrayDisplay($aInfo, "Package info", "", 64, "", "Filename|Size(bytes)")
+	_ArrayDisplay($aInfo, "Package info", "", 64, "")
 EndFunc   ;==>_DisplayPackageInfo
 
+Func _GetHeaderSize($sContainerPath)
+	$sSzHeader = BinaryToString(_FileReadBackwards($sContainerPath, $_128B))
+	;$sSzHeader = "[!?evHeaderSz=10583950284!?][?...?]"
+	$oRE = StringRegExp($sSzHeader, "\[\!\?evHeaderSz=(\d+)\!\?\]", 3)
+	If Not @error Then
+		Return Int($oRE[0])
+	Else
+		Return 0
+	EndIf
+EndFunc
+
 Func _GetHeaderFromPackage($sContainerPath)
-	$hContainerR = FileOpen($sContainerPath, 16)
-	$sOldHeaderR = BinaryToString(FileRead($hContainerR, $_48KB))
-	FileClose($hContainerR)
-	$nUsedBytes = _GetUsedBytesInBufferCount($sOldHeaderR)
-	$sOldHeader = StringLeft($sOldHeaderR, $nUsedBytes) ;//Trim unused bytes
+	Local $sOldHeader
+	$nHeaderSz = _GetHeaderSize($sContainerPath)
+	If $nHeaderSz > 0 Then
+		$sOldHeader = BinaryToString(_FileReadBackwards($sContainerPath, $nHeaderSz))
+		$sOldHeader = StringReplace($sOldHeader, "[!?evHeaderSz=" & $nHeaderSz & "!?]", "")
+	EndIf
 	Return $sOldHeader
 EndFunc   ;==>_GetHeaderFromPackage
 
@@ -42,9 +66,9 @@ Func _ExtractDataFromHeader($sHeader)
 			$nIndex += 1
 		Next
 	Next
-
 	Return $aRtn
 EndFunc   ;==>_ExtractDataFromHeader
+
 
 Func _GetSubFolder($s_FolderPath)
 	;//Get name of the folder relative to the path (E:\Lab\Folder ->"Folder")
@@ -60,7 +84,7 @@ EndFunc   ;==>_GetSubFolder
 Func _BinaryMergeFolder($s_FolderPath, $sContainerPath, $bCheckDuplicate = True, $sSubfolder = "")
 	If Not StringRegExp(FileGetAttrib($s_FolderPath), "(D)") Then Return ;//Not a folder
 	If $sSubfolder = "" Then $sSubfolder = _GetSubFolder($s_FolderPath)
-	Local $aFiles = _FileListToArray($s_FolderPath, "*", 1, True) ;//Return absolute path of files
+	$aFiles = _FileListToArray($s_FolderPath, "*", 1, True) ;//Return absolute path of files
 	If IsArray($aFiles) Then
 		$aFiles[0] = $aFiles[UBound($aFiles) - 1]
 		_ArrayPop($aFiles) ;//replace index count in 1st element with data
@@ -76,41 +100,19 @@ Func _BinaryMergeFolder($s_FolderPath, $sContainerPath, $bCheckDuplicate = True,
 	EndIf
 EndFunc   ;==>_BinaryMergeFolder
 
-Func _BinaryMergeFiles($a_FilesToMerge, $sContainerPath, $bCheckDuplicate = True, $sSubfolder = "")
-	;//Merge files into a container
-	;//Check duplicate will decrease performance
-	Local $sHeader, $nBytesRef, $hTargetFile
-	;//[?E:\_file1.txt,1045?][D:\hello.png,2459035?]
+Func _TrimOldHeader($sContainerPath)
+	$nOldHeaderSz = _GetHeaderSize($sContainerPath)
+	If Not $nOldHeaderSz Then Return
+	$sFileSize = FileGetSize($sContainerPath)
+	$hContainer = FileOpen($sContainerPath, 1 + 16)
+	FileSetPos($hContainer, - $nOldHeaderSz, $FILE_END)
+	FileSetEnd($hContainer)
+	FileClose($hContainer)
+EndFunc
+
+Func _BinaryMergeFiles($a_FilesToMerge, $sContainerPath, $bCheckDuplicate = False, $sSubfolder = "")
 	$sOldHeader = _GetHeaderFromPackage($sContainerPath)
-	If $bCheckDuplicate = True Then $aOldHeaderData = _ExtractDataFromHeader($sOldHeader) ;//Check for duplicate files
-
-	$sHeader = $sOldHeader ;//Initialize using old header
-	$sHeader &= "[?" & $sSubfolder
-	For $i = 0 To UBound($a_FilesToMerge) - 1
-		$sCurFilePATH = $a_FilesToMerge[$i]
-		$sCurFileSIZE = FileGetSize($sCurFilePATH)
-		If Not $sCurFileSIZE Then ContinueLoop
-		$sCurFileNAME = _GetFileNameFromPath($sCurFilePATH)
-		If $bCheckDuplicate = True Then
-			If __BinaryCheckDuplicate($aOldHeaderData, $sCurFilePATH) Then ;//Duplicate file
-				$a_FilesToMerge[$i] = ""
-				ContinueLoop (1) ;//Skip adding data about this file to header.
-			EndIf
-		EndIf
-		$sHeader &= "|"
-		$sHeader &= $sCurFileNAME & ":" ;//[?file1.txt,1045|?][?hello.png,2459035|NewFolder?]
-		$sHeader &= $sCurFileSIZE
-	Next
-
-	$sHeader &= "?]"
-	$sHeader = StringRegExpReplace($sHeader, "\[\?\?\]", "", 1)
-	$tHeader = DllStructCreate("byte[" & $_48KB & "]")
-	DllStructSetData($tHeader, 1, String($sHeader))
-	;//Write header to the first 48kB of container - can contain info for up to approx 1400 files.
-	$hContainerOW = _WinAPI_CreateFile($sContainerPath, 3, 4)
-	_WinAPI_SetFilePointer($hContainerOW, 0)
-	_WinAPI_WriteFile($hContainerOW, $tHeader, $_48KB, $nBytesRef)
-	_WinAPI_CloseHandle($hContainerOW)
+	_TrimOldHeader($sContainerPath)
 	$hContainer = FileOpen($sContainerPath, 17)
 	For $i = 0 To UBound($a_FilesToMerge) - 1
 		$sCurFilePATH = $a_FilesToMerge[$i]
@@ -128,10 +130,53 @@ Func _BinaryMergeFiles($a_FilesToMerge, $sContainerPath, $bCheckDuplicate = True
 			$sTargetData = FileRead($hTargetFile, $sCurFileSIZE)
 			FileWrite($hContainer, $sTargetData)
 		EndIf
-		FileClose($hTargetFile)
 	Next
+	FileClose($hTargetFile)
 	FileClose($hContainer)
+	_WriteHeader($a_FilesToMerge, $sContainerPath, False, $sSubfolder, $sOldHeader)
 EndFunc   ;==>_BinaryMergeFiles
+
+Func _WriteHeader(ByRef $a_FilesToMerge, $sContainerPath, $bCheckDuplicate = False, $sSubfolder = "", $sOldHeader = "")
+	;//Remove old header, append new header at end of container
+	Local $sHeader, $nBytesRef, $hTargetFile
+	;//[?E:\_file1.txt,1045?][D:\hello.png,2459035?]
+	$aOldHeaderData = _ExtractDataFromHeader($sOldHeader) ;//Check for duplicate files
+	$sHeader = "[?" & $sSubfolder
+	For $i = 0 To UBound($a_FilesToMerge) - 1
+		$sCurFilePATH = $a_FilesToMerge[$i]
+		$sCurFileSIZE = FileGetSize($sCurFilePATH)
+		If Not $sCurFileSIZE Then ContinueLoop
+		$sCurFileNAME = _GetFileNameFromPath($sCurFilePATH)
+		If $bCheckDuplicate = True Then
+			If __BinaryCheckDuplicate($aOldHeaderData, $sCurFilePATH) Then;//Duplicate file
+				$a_FilesToMerge[$i] = "" ;//Remove this file from merger list.
+				ContinueLoop (1) ;//Skip adding data about this file to header.
+			EndIf
+		EndIf
+		$sHeader &= "|"
+		$sHeader &= $sCurFileNAME & ":" ;//[?file1.txt,1045|?][?hello.png,2459035|NewFolder?]
+		$sHeader &= $sCurFileSIZE
+	Next
+	$sHeader &= "?]"
+	$sHeader = StringRegExpReplace($sHeader, "\[\?\?\]", "", 1)
+	$nNewHeaderSz = StringLen($sOldHeader & $sHeader)
+	$nTotalNewHeaderSz = $nNewHeaderSz + StringLen("[!?evHeaderSz=" & $nNewHeaderSz & "!?]")  ;//With headsize len included
+	If Not $sOldHeader Then  ;//Create first header
+		$sHeader = "[!?evHeaderSz=" & $nTotalNewHeaderSz & "!?]" & $sHeader
+	Else	;//Append more header info
+		$sHeader = "[!?evHeaderSz=" & $nTotalNewHeaderSz & "!?]" & $sOldHeader & $sHeader
+		_SetNewHeaderSz($sHeader, $nTotalNewHeaderSz)
+	EndIf
+
+	$hContainerAP = FileOpen($sContainerPath, 1 + 16)
+	FileWrite($hContainerAP, $sHeader)
+	FileClose($hContainerAP)
+EndFunc	
+
+
+Func _SetNewHeaderSz(ByRef $sOldHeader, $nNewHeaderSz)
+	$sOldHeader = StringRegExpReplace($sOldHeader, "\[\!\?evHeaderSz=(\d+)\!\?\]", "[!?evHeaderSz=" & $nNewHeaderSz &"!?]", 1)
+EndFunc
 
 Func __BinaryCheckDuplicate($aOldHeaderData, $sFilePath)
 	For $j = 0 To UBound($aOldHeaderData, 1) - 1
@@ -140,10 +185,10 @@ Func __BinaryCheckDuplicate($aOldHeaderData, $sFilePath)
 			Return True
 		Else
 			Return False
-		EndIf
+		EndIf	
 	Next
-EndFunc   ;==>__BinaryCheckDuplicate
-
+EndFunc
+	
 Func _BinarySplit($sContainerPath, $sDest)
 	$sDest = _StripFilePath($sDest)
 	If Not FileExists($sDest) Then DirCreate($sDest)
@@ -152,7 +197,6 @@ Func _BinarySplit($sContainerPath, $sDest)
 	If Not $sCurFileSIZE Then Return 0
 	$sHeader = _GetHeaderFromPackage($sContainerPath)
 	$aFileInfo = _ExtractDataFromHeader($sHeader)
-	FileSetPos($hContainer, $_48KB, 0) ;$_48KB= Header size
 	For $i = 0 To UBound($aFileInfo, 1) - 1
 		$sFileName = $aFileInfo[$i][0]
 		$sFileSize = $aFileInfo[$i][1]
@@ -178,21 +222,11 @@ Func _StripFilePath($sString)
 EndFunc   ;==>_StripFilePath
 
 Func _GetUsedBytesInBufferCount($sbString)
-	;//Do not use this for other scripts
-	;//This prioritizes performance by scanning forwards until it reaches null value in buffer
-	;//Instead of scanning backwards until it reaches first non-NULL value.
-	Local $i = 1
+	;//Get the total of used bytes in the buffer
 	If Not StringInStr($sbString, "[?") Then Return 0 ;//Buffer doesn't exist - is new container
-	$tStruct = DllStructCreate("byte[" & $_48KB & "]")
-	DllStructSetData($tStruct, 1, $sbString)
-	While 1
-		$s = DllStructGetData($tStruct, 1, $i)
-		If $s = 0 Then
-			If DllStructGetData($tStruct, 1, $i + 1) = 0 Then
-				ExitLoop
-			EndIf
-		EndIf
-		$i += 1
-	WEnd
-	Return $i
+	$a = StringToASCIIArray($sbString)
+	For $i = 0 To UBound($a) - 1
+		If $a[$i] = 0 Then Return $i;//NULL doesn't exist as an Autoit string variant so this is fine
+	Next
+	Return UBound($a)
 EndFunc   ;==>_GetUsedBytesInBufferCount
