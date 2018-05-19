@@ -2,7 +2,7 @@
 	Ev-Secure Backup - Gathers your files in one place and encrypt them for easier and more secure backup.
 
 
-	Thanks to BBs19 for Metro UI UDF, UEZ for CSS loading animations.
+	Thanks to BBs19 and contributors for Metro UI UDF, UEZ for CSS loading animations.
 
 	2015 T.H. sandwichdoge@gmail.com
 
@@ -99,6 +99,8 @@
 	//v1.9.3
 	- [Package Engine]Vastly improved performance by disabling duplication check
 	- [GUI]Listview no longer accepts duplicate items
+	//v1.9.4
+	- [Package Engine]No limit on number of files stored.
 
 	TODO: (high to low priority)
 	- Improve custom binary merge engine to decrease header size
