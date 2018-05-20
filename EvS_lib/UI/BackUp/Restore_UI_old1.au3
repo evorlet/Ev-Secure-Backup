@@ -64,32 +64,32 @@ Func Restore4()
 		If FileExists($sTempZip) Then _FileShred($sTempZip)
 		_Crypt_DecryptFile($sContainerPath, $sTempZip, $hKey, $CALG_USERKEY)
 		If Not @error Then
-			If _FileReadBackwards($sTempZip, 2) = "?]" Then ;//Custom method
-				_BinarySplit($sTempZip, $g_sScriptDir & "\YourData")
-			Else ;//zip library method
-				$iError = @error
+		If _FileReadBackwards($sTempZip, 2) = "?]" Then ;//Custom method
+			_BinarySplit($sTempZip, $g_sScriptDir & "\YourData")
+		Else ;//zip library method
+			$iError = @error
+			If $iError Then
+				$sTemp = $iError
+				$sReport &= "Error decrypting container - " & StringReplace($sTemp, "420", "Invalid password.") & @CRLF
+			Else
+				For $i = 0 To 30
+					If FileExists($sTempZip) Then ExitLoop
+					Sleep(200)
+				Next
+				;//Extract data				
+				GUICtrlSetData($lRestore4_Status, "")
+				$g_LoadingText = "Extracting"
+				_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
 				If $iError Then
-					$sTemp = $iError
-					$sReport &= "Error decrypting container - " & StringReplace($sTemp, "420", "Invalid password.") & @CRLF
+					$sReport &= "Error extracting archive. Code: " & $iError & @CRLF
 				Else
-					For $i = 0 To 30
-						If FileExists($sTempZip) Then ExitLoop
-						Sleep(200)
-					Next
-					;//Extract data
-					GUICtrlSetData($lRestore4_Status, "")
-					$g_LoadingText = "Extracting"
-					_Zip_UnzipAll($sTempZip, $sTempDir, 20 + 1024 + 4096)
-					If $iError Then
-						$sReport &= "Error extracting archive. Code: " & $iError & @CRLF
-					Else
-						$sReport &= "Everything extracted to " & $sTempDir & @CRLF
-						$sReport &= "Shredding leftovers.." & @CRLF
-					EndIf
-				EndIf
+					$sReport &= "Everything extracted to " & $sTempDir & @CRLF
+					$sReport &= "Shredding leftovers.." & @CRLF
+				EndIf				
 			EndIf
-			$g_LoadingText = "Cleaning"
-			If _FileShred($sTempZip) = 1 Then $sReport &= "Error shredding _temp.zip file leftover!" & @CRLF
+		EndIf
+		$g_LoadingText = "Cleaning"
+		If _FileShred($sTempZip) = 1 Then $sReport &= "Error shredding _temp.zip file leftover!" & @CRLF
 		Else
 			$sReport &= "Error occurred during decryption, possibly wrong password. Code: " & @error & @CRLF
 		EndIf

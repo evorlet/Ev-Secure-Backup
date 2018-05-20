@@ -5,15 +5,30 @@
 #include <File.au3>
 
 Global Const $_1KB = 1024
-Global Const $_128B = 128
+Global Const $_64B = 64
 Global Const $_48KB = $_1KB * 48
 Global Const $_1MB = 1048576
-;//Header size's len = 1kB
+;//Header size's len = 64
 
+#cs
+FileDelete("E:\Lab\cw.ev")
+Local $sF = ["E:\Lab\a\b.txt", "E:\Lab\a.txt"]
+Local $sF2 =  ["E:\Lab\back log.txt"]
 
-Func _FileReadBackwards($__sPath, $__nChars)
+;_BinaryMergeFiles($sF2, "E:\Lab\cw.ev")
+
+_BinaryMergeFolder("E:\Lab\Extracted", "E:\Lab\cw.ev")
+_BinaryMergeFiles($sF, "E:\Lab\cw.ev")
+_BinaryMergeFiles($sF2, "E:\Lab\cw.ev")
+_BinaryMergeFolder("E:\Lab\n", "E:\Lab\cw.ev")
+
+_BinarySplit("E:\Lab\cw.ev", "E:\Lab\ext")
+#ce
+
+Func _FileReadBackwards($__sPath, $__nChars, $__nPos = "")
+	If $__nPos = "" Then $__nPos = $__nChars
 	$__hFile = FileOpen($__sPath, 16)
-	FileSetPos($__hFile, -$__nChars, 2)
+	FileSetPos($__hFile, -$__nPos, 2)
 	$sRtn = FileRead($__hFile, $__nChars)
 	FileClose($__hFile)
 	Return $sRtn
@@ -27,22 +42,27 @@ Func _DisplayPackageInfo($sContainerPath)
 EndFunc   ;==>_DisplayPackageInfo
 
 Func _GetHeaderSize($sContainerPath)
-	$sSzHeader = BinaryToString(_FileReadBackwards($sContainerPath, $_128B))
-	;$sSzHeader = "[!?evHeaderSz=10583950284!?][?...?]"
-	$oRE = StringRegExp($sSzHeader, "\[\!\?evHeaderSz=(\d+)\!\?\]", 3)
+	Local $aRet = [0, 0]
+	$sSzHeader = BinaryToString(_FileReadBackwards($sContainerPath, $_64B))
+	;$sSzHeader = "[?...?][!?evHeaderSz=10583950284!?]"
+	$oRE = StringRegExp($sSzHeader, "(\[\!\?evHeaderSz=(\d+)\!\?\])", 3)
 	If Not @error Then
-		Return Int($oRE[0])
-	Else
-		Return 0
+		$aRet[0] = Int($oRE[1])
+		$aRet[1] = StringLen($oRE[0])
 	EndIf
+	Return $aRet
 EndFunc
 
 Func _GetHeaderFromPackage($sContainerPath)
 	Local $sOldHeader
-	$nHeaderSz = _GetHeaderSize($sContainerPath)
+	Local $aTmp 
+	$aTmp = _GetHeaderSize($sContainerPath)
+	If $aTmp = 0 Then Return 0
+	$nHeaderSz = $aTmp[0]
+	$nInfoSz = $aTmp[1]
 	If $nHeaderSz > 0 Then
-		$sOldHeader = BinaryToString(_FileReadBackwards($sContainerPath, $nHeaderSz))
-		$sOldHeader = StringReplace($sOldHeader, "[!?evHeaderSz=" & $nHeaderSz & "!?]", "")
+		$sOldHeader = BinaryToString(_FileReadBackwards($sContainerPath, $nHeaderSz, $nHeaderSz + $nInfoSz))
+		;$sOldHeader = StringReplace($sOldHeader, "[!?evHeaderSz=" & $nHeaderSz & "!?]", "")
 	EndIf
 	Return $sOldHeader
 EndFunc   ;==>_GetHeaderFromPackage
@@ -101,11 +121,12 @@ Func _BinaryMergeFolder($s_FolderPath, $sContainerPath, $bCheckDuplicate = True,
 EndFunc   ;==>_BinaryMergeFolder
 
 Func _TrimOldHeader($sContainerPath)
-	$nOldHeaderSz = _GetHeaderSize($sContainerPath)
-	If Not $nOldHeaderSz Then Return
-	$sFileSize = FileGetSize($sContainerPath)
+	Local $aTmp[2]
+	$aTmp = _GetHeaderSize($sContainerPath)
+	If $aTmp[0] = 0 Then Return
+	ConsoleWrite(129)
 	$hContainer = FileOpen($sContainerPath, 1 + 16)
-	FileSetPos($hContainer, - $nOldHeaderSz, $FILE_END)
+	FileSetPos($hContainer, - $aTmp[0] - $aTmp[1], $FILE_END)
 	FileSetEnd($hContainer)
 	FileClose($hContainer)
 EndFunc
@@ -130,17 +151,19 @@ Func _BinaryMergeFiles($a_FilesToMerge, $sContainerPath, $bCheckDuplicate = Fals
 			$sTargetData = FileRead($hTargetFile, $sCurFileSIZE)
 			FileWrite($hContainer, $sTargetData)
 		EndIf
+		FileClose($hTargetFile)
+
 	Next
-	FileClose($hTargetFile)
 	FileClose($hContainer)
 	_WriteHeader($a_FilesToMerge, $sContainerPath, False, $sSubfolder, $sOldHeader)
 EndFunc   ;==>_BinaryMergeFiles
 
 Func _WriteHeader(ByRef $a_FilesToMerge, $sContainerPath, $bCheckDuplicate = False, $sSubfolder = "", $sOldHeader = "")
+	;If $sOldHeader = 0 Then $sOldHeader = ""
 	;//Remove old header, append new header at end of container
 	Local $sHeader, $nBytesRef, $hTargetFile
 	;//[?E:\_file1.txt,1045?][D:\hello.png,2459035?]
-	$aOldHeaderData = _ExtractDataFromHeader($sOldHeader) ;//Check for duplicate files
+	If $bCheckDuplicate Then $aOldHeaderData = _ExtractDataFromHeader($sOldHeader) ;//Check for duplicate files
 	$sHeader = "[?" & $sSubfolder
 	For $i = 0 To UBound($a_FilesToMerge) - 1
 		$sCurFilePATH = $a_FilesToMerge[$i]
@@ -159,17 +182,18 @@ Func _WriteHeader(ByRef $a_FilesToMerge, $sContainerPath, $bCheckDuplicate = Fal
 	Next
 	$sHeader &= "?]"
 	$sHeader = StringRegExpReplace($sHeader, "\[\?\?\]", "", 1)
-	$nNewHeaderSz = StringLen($sOldHeader & $sHeader)
-	$nTotalNewHeaderSz = $nNewHeaderSz + StringLen("[!?evHeaderSz=" & $nNewHeaderSz & "!?]")  ;//With headsize len included
-	If Not $sOldHeader Then  ;//Create first header
-		$sHeader = "[!?evHeaderSz=" & $nTotalNewHeaderSz & "!?]" & $sHeader
-	Else	;//Append more header info
-		$sHeader = "[!?evHeaderSz=" & $nTotalNewHeaderSz & "!?]" & $sOldHeader & $sHeader
-		_SetNewHeaderSz($sHeader, $nTotalNewHeaderSz)
+	$sFinalHeader = ""
+	$sOldLen = StringLen($sOldHeader)
+	If $sOldLen = 1 Then $sOldLen = 0
+	$nNewHeaderSz = StringLen($sHeader) + $sOldLen
+	If $sOldHeader Then  ;//Append more header info
+		$sFinalHeader = $sOldHeader & $sHeader & "[!?evHeaderSz=" & $nNewHeaderSz & "!?]"
+		_SetNewHeaderSz($sFinalHeader, $nNewHeaderSz)
+	Else	;//Create first header
+		$sFinalHeader = $sHeader & "[!?evHeaderSz=" & $nNewHeaderSz & "!?]"
 	EndIf
-
 	$hContainerAP = FileOpen($sContainerPath, 1 + 16)
-	FileWrite($hContainerAP, $sHeader)
+	FileWrite($hContainerAP, $sFinalHeader)
 	FileClose($hContainerAP)
 EndFunc	
 
@@ -188,7 +212,7 @@ Func __BinaryCheckDuplicate($aOldHeaderData, $sFilePath)
 		EndIf	
 	Next
 EndFunc
-	
+
 Func _BinarySplit($sContainerPath, $sDest)
 	$sDest = _StripFilePath($sDest)
 	If Not FileExists($sDest) Then DirCreate($sDest)

@@ -5,8 +5,8 @@
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
 ;//Keywords for compilation
-#pragma compile(ProductVersion, 1.9.4)
-#pragma compile(FileVersion, 1.9.4)
+#pragma compile(ProductVersion, 1.9.5)
+#pragma compile(FileVersion, 1.9.5)
 #pragma compile(UPX, False)
 #pragma compile(LegalCopyright, sandwichdoge@gmail.com)
 #pragma compile(ProductName, Ev-Secure Backup)
@@ -54,7 +54,7 @@ _Crypt_Startup()
 If StringRight($g_sScriptDir, 1) = "\" Then $g_sScriptDir = StringTrimRight($g_sScriptDir, 1) ;@ScriptDir's properties may change on different OS versions
 Global $g_aDefaultItems[][] = [["Documents", @UserProfileDir & "\Documents", "\_Res\Doc.ico"], ["Pictures", @UserProfileDir & "\Pictures", "\_Res\Pic.ico"], ["Music", @UserProfileDir & "\Music", "\_Res\Music.ico"], ["Videos", @UserProfileDir & "\Videos", "\_Res\Video.ico"]]
 Global $g_nDefaultFoldersCount = UBound($g_aDefaultItems) ; Important variable, to be used in various listview functions
-Global $g_sProgramVersion = "1.9.4"
+Global $g_sProgramVersion = "1.9.5"
 Global $g_aToBackupItems[0], $g_aProfiles[0], $sState
 
 ;//Initialize
