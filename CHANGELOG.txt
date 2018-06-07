@@ -101,11 +101,11 @@
 	- [GUI]Listview no longer accepts duplicate items
 	//v1.9.4
 	- [Package Engine]No limit on number of files stored.
-
+	//v1.9.5
+	- [Package Engine]Final.
+	
 	TODO: (high to low priority)
-	- Improve custom binary merge engine to decrease header size
 	- Option to choose number of passes for file shredder
 	- Upload processed files to remote server (Google Drive, Dropbox, FTP, etc.)
 	- Option to put the files back where they originally were
-
 #ce
