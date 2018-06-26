@@ -3,7 +3,7 @@ Gather your files in one place and encrypt them for more secure and easier onlin
 
 
 
-![alt tag](https://cloud.githubusercontent.com/assets/12136678/11063209/9c9afe1e-87e7-11e5-8901-ab69853201d0.png)
+![alt text](https://github.com/sandwichdoge/Ev-Secure-Backup/blob/master/_Res/EvSBackup.png)
 
 
 **Download for Windows:** https://github.com/sandwichdoge/Ev-Secure-Backup/releases
